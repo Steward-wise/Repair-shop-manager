@@ -35,7 +35,48 @@ async def try_async():
         info = ld.all_values
     return ld, info
 
-def build_result(info):
+def get_battery(ld):
+    """Read battery health % from AppleSmartBattery via DiagnosticsService."""
+    try:
+        from pymobiledevice3.services.diagnostics import DiagnosticsService
+        import inspect
+        svc = DiagnosticsService(ld)
+        # Try async context manager
+        if hasattr(svc, '__aenter__'):
+            import asyncio
+            async def _read():
+                async with DiagnosticsService(ld) as diag:
+                    entry = diag.ioregistry_entry('AppleSmartBattery')
+                    if inspect.isawaitable(entry):
+                        entry = await entry
+                    return entry
+            io = asyncio.get_event_loop().run_until_complete(_read())
+        else:
+            with DiagnosticsService(ld) as diag:
+                io = diag.ioregistry_entry('AppleSmartBattery')
+        if not io:
+            return {}
+        nominal  = io.get('NominalChargeCapacity') or io.get('AppleRawMaxCapacity')
+        design   = io.get('DesignCapacity')
+        health_pct = round(nominal / design * 100) if nominal and design else None
+        temp_raw = io.get('Temperature', 0)
+        return {
+            'battery_health':      health_pct,                          # max capacity %
+            'battery_current':     io.get('CurrentCapacity'),           # current charge %
+            'battery_cycles':      io.get('CycleCount'),
+            'battery_temperature': round((temp_raw - 2731) / 10, 1) if temp_raw else None,
+            'battery_voltage':     io.get('Voltage'),
+            'battery_health_label': (
+                'Good' if health_pct and health_pct >= 80 else
+                'Fair' if health_pct and health_pct >= 60 else
+                'Poor' if health_pct else 'Unknown'
+            ),
+        }
+    except Exception:
+        return {}
+
+def build_result(info, ld=None):
+    battery = get_battery(ld) if ld else {}
     return {
         'platform':          'ios',
         'manufacturer':      'Apple',
@@ -61,12 +102,13 @@ def build_result(info):
         'icloud_status':     'clean' if info.get('ActivationState') == 'Activated' else ('locked' if info.get('ActivationState') == 'Unactivated' else 'unknown'),
         'mdm_status':        'supervised' if info.get('IsSupervised') else 'clean',
         'frp_status':        'unknown',
+        **battery,
     }
 
 # ── Try sync first ────────────────────────────────────────────────────────────
 try:
     ld, info = try_sync()
-    out(build_result(info))
+    out(build_result(info, ld))
 except Exception as sync_err:
     pass
 
@@ -75,7 +117,7 @@ try:
     import asyncio
     async def run():
         ld, info = await try_async()
-        return build_result(info)
+        return build_result(info, ld)
     result = asyncio.run(run())
     out(result)
 except Exception as async_err:
