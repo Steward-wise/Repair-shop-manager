@@ -332,6 +332,42 @@ function detectAndroid() {
   }
 }
 
+// ─── iOS BASIC DETECTION via PowerShell (no ideviceinfo needed) ─────────────
+// Detects iPhone/iPad presence via Windows PnP device list (requires iTunes driver)
+function detectiOSbasic() {
+  try {
+    const ps = run(
+      `powershell -NoProfile -Command "Get-PnpDevice | Where-Object {$_.Present -eq $true -and ($_.FriendlyName -like '*Apple*' -or $_.FriendlyName -like '*iPhone*' -or $_.FriendlyName -like '*iPad*')} | Select-Object FriendlyName,Status | ConvertTo-Json -Compress"`,
+      6000
+    )
+    if (!ps || ps.trim() === '' || ps.includes('error')) return null
+    const raw  = ps.trim().startsWith('[') ? JSON.parse(ps) : [JSON.parse(ps)]
+    const devs = raw.filter((d) => d && d.FriendlyName)
+    if (devs.length === 0) return null
+    const name = devs[0].FriendlyName
+    const isIpad = name.toLowerCase().includes('ipad')
+    return {
+      platform:     isIpad ? 'ios' : 'ios',
+      manufacturer: 'Apple',
+      model:        null,
+      device_name:  name,
+      os_version:   null,
+      serial_number:null,
+      imei:         null,
+      udid:         null,
+      battery_health: null,
+      activation_state: 'unknown',
+      icloud_status: 'unknown',
+      mdm_status:   'unknown',
+      frp_status:   'unknown',
+      _basic:       true,  // flag: full ideviceinfo not available
+      _hint:        'Basic detection only. Run setup.bat to install ideviceinfo for full diagnostics.',
+    }
+  } catch {
+    return null
+  }
+}
+
 // ─── FULL iOS DETECTION ──────────────────────────────────────────────────────
 function detectiOS() {
   if (!IDEV) return null
@@ -484,12 +520,21 @@ const server = http.createServer((req, res) => {
       return
     }
 
-    // Try iOS
+    // Try iOS (full ideviceinfo)
     const ios = detectiOS()
     if (ios) {
       console.log(`  → iOS: ${ios.device_name} (${ios.model})`)
       res.writeHead(200)
       res.end(JSON.stringify(ios))
+      return
+    }
+
+    // Try iOS basic (PowerShell PnP — no ideviceinfo needed)
+    const iosBasic = detectiOSbasic()
+    if (iosBasic) {
+      console.log(`  → iOS (basic): ${iosBasic.device_name}`)
+      res.writeHead(200)
+      res.end(JSON.stringify(iosBasic))
       return
     }
 
@@ -519,18 +564,9 @@ console.log(`  ADB:          ${ADB  ? '✓ ' + ADB         : '✗  Not found'}`)
 console.log(`  ideviceinfo:  ${IDEV ? '✓ ' + IDEV        : '✗  Not found'}`)
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
-if (!ADB && !IDEV) {
-  console.log('\n  ⚠  No diagnostic tools found.\n')
-  console.log('  Android setup:')
-  console.log('    1. Download platform-tools from:')
-  console.log('       https://developer.android.com/tools/releases/platform-tools')
-  console.log('    2. Extract and place adb.exe into:')
-  console.log('       local-agent\\platform-tools\\adb.exe')
-  console.log('\n  iPhone setup:')
-  console.log('    1. Download libimobiledevice-win32 from:')
-  console.log('       https://github.com/imobiledevice-win/imobiledevice-net/releases')
-  console.log('    2. Place ideviceinfo.exe into:')
-  console.log('       local-agent\\ideviceinfo.exe\n')
+if (!ADB || !IDEV) {
+  console.log('\n  ⚠  Run setup.bat to auto-download missing tools.')
+  console.log('     iPhone can still be detected via Windows PnP (basic info only).\n')
 }
 
 server.listen(PORT, '127.0.0.1', () => {
