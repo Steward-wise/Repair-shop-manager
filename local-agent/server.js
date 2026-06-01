@@ -19,12 +19,15 @@ const PORT = 7777
 const TIMEOUT = 8000
 
 // Allow requests from the repair shop app (and localhost for testing)
-const ALLOWED_ORIGINS = [
-  'https://app.404fixed.co.uk',
+// Add your production URL here if needed, or set ALLOWED_ORIGIN env var
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGIN
+  ? [process.env.ALLOWED_ORIGIN]
+  : []
+).concat([
   'http://localhost:3000',
   'http://localhost:3001',
   'http://192.168.1.196:3000',
-]
+])
 
 // Try to find ADB — check local platform-tools first, then PATH
 function findAdb() {
