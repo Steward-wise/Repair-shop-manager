@@ -5,6 +5,7 @@
 [build.environment]
   NEXT_TELEMETRY_DISABLED = "1"
   NODE_VERSION = "20"
+  SECRETS_SCAN_OMIT_PATHS = ".env.example"
 
 # Next.js runtime is auto-applied by Netlify for Next.js projects
 # Environment variables (secrets) must be added via Netlify dashboard:
