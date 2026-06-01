@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# Environment files — NEVER commit these
+.env.local
+.env.*.local
+.env
+
+# Netlify
+.netlify/
+netlify/functions-internal/
+
+# Logs & debug
+*.log
+deploy-log.txt
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code
+.claude/
+
+# Nested copy of project (old)
+repair-shop/
+
+# Pi deploy scripts (not needed on Netlify)
+deploy.bat
+deploy-retry.bat
+deploy-log.txt
+setup-ssh-key.bat
+ecosystem.config.js
+scripts/
+DEPLOY.md
+SETUP.md

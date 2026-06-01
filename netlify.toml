@@ -1,0 +1,21 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NEXT_TELEMETRY_DISABLED = "1"
+  NODE_VERSION = "20"
+
+# Next.js runtime is auto-applied by Netlify for Next.js projects
+# Environment variables (secrets) must be added via Netlify dashboard:
+#   NEXT_PUBLIC_SUPABASE_URL
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY
+#   SUPABASE_SERVICE_ROLE_KEY
+#   RESEND_API_KEY
+#   TWILIO_ACCOUNT_SID
+#   TWILIO_AUTH_TOKEN
+#   TWILIO_PHONE_NUMBER
+#   VAPID_PUBLIC_KEY
+#   VAPID_PRIVATE_KEY
+#   VAPID_SUBJECT
+#   IMEI_CHECK_API_KEY  (optional)
