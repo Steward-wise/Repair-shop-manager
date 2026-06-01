@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import type { PhoneCheck } from '@/types'
@@ -38,6 +38,29 @@ function passCount(tests: PhoneCheck['tests']) {
   const done = tests.filter(t => t.selected && t.result && t.result !== 'skip')
   const pass = done.filter(t => t.result === 'pass').length
   return { pass, fail: done.length - pass, total: done.length }
+}
+
+function BridgeStatus() {
+  const [status, setStatus] = useState<'checking' | 'online' | 'offline'>('checking')
+
+  useEffect(() => {
+    fetch('http://localhost:7777/status', { signal: AbortSignal.timeout(2000) })
+      .then(r => r.ok ? setStatus('online') : setStatus('offline'))
+      .catch(() => setStatus('offline'))
+  }, [])
+
+  if (status === 'checking') return null
+
+  return (
+    <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full border ${
+      status === 'online'
+        ? 'bg-green-900/20 border-green-800/40 text-green-400'
+        : 'bg-zinc-800/40 border-zinc-700 text-zinc-500'
+    }`}>
+      <div className={`w-1.5 h-1.5 rounded-full ${status === 'online' ? 'bg-green-400' : 'bg-zinc-600'}`} />
+      {status === 'online' ? 'Local bridge online' : 'Local bridge offline'}
+    </div>
+  )
 }
 
 export default function PhoneCheckListPage() {
@@ -91,6 +114,7 @@ export default function PhoneCheckListPage() {
         <div>
           <h1 className="text-2xl font-bold text-fg">Phone Check</h1>
           <p className="text-muted text-sm mt-0.5">Device diagnostics, IMEI checks & grading</p>
+          <div className="mt-1.5"><BridgeStatus /></div>
         </div>
         <div className="flex gap-2">
           <button onClick={() => newCheck('repair')} disabled={creating} className="btn-primary text-sm flex items-center gap-2">
