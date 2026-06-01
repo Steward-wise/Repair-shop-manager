@@ -88,11 +88,14 @@ function findPython() {
   const savedPath = path.join(__dirname, '.python_cmd')
   if (fs.existsSync(savedPath)) {
     const cmd = fs.readFileSync(savedPath, 'utf8').trim()
-    const r = spawnSync(cmd, ['--version'], { timeout: 3000, stdio: 'ignore', shell: true })
+    const parts = cmd.split(' ')
+    const r = spawnSync(parts[0], [...parts.slice(1), '-c', 'import pymobiledevice3'], { timeout: 5000, stdio: 'ignore', shell: true })
     if (r.status === 0) return cmd
   }
-  for (const cmd of ['python', 'python3', 'py']) {
-    const r = spawnSync(cmd, ['-c', 'import pymobiledevice3'], { timeout: 5000, stdio: 'ignore', shell: true })
+  // Try versioned py launcher first, then fallbacks
+  for (const cmd of ['py -3.12', 'py -3.11', 'py -3.13', 'py -3.10', 'python', 'python3', 'py']) {
+    const parts = cmd.split(' ')
+    const r = spawnSync(parts[0], [...parts.slice(1), '-c', 'import pymobiledevice3'], { timeout: 5000, stdio: 'ignore', shell: true })
     if (r.status === 0) return cmd
   }
   return null

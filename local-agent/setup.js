@@ -83,17 +83,21 @@ function getPythonVersion(cmd) {
 }
 
 function findPython() {
-  // Prefer py launcher with specific version (Python 3.12 or 3.11 ideal)
-  const preferred = ['py -3.12', 'py -3.11', 'py -3.10', 'py -3.13']
-  for (const cmd of preferred) {
-    const r = spawnSync(cmd.split(' ')[0], cmd.split(' ').slice(1).concat(['--version']), { timeout: 3000, stdio: 'pipe', shell: true })
-    if (r.status === 0) {
-      const v = (r.stdout || r.stderr || '').toString().trim()
-      if (v.includes('3.')) return { cmd, version: v }
+  // First: find any Python that already has pymobiledevice3 installed
+  const allCandidates = ['py -3.12', 'py -3.11', 'py -3.13', 'py -3.10', 'python', 'python3', 'py']
+  for (const cmd of allCandidates) {
+    const parts = cmd.split(' ')
+    const r = spawnSync(parts[0], [...parts.slice(1), '-c', 'import pymobiledevice3; print("ok")'], { timeout: 8000, stdio: 'pipe', shell: true })
+    if (r.status === 0 && (r.stdout || '').toString().includes('ok')) {
+      const vr = spawnSync(parts[0], [...parts.slice(1), '--version'], { timeout: 3000, stdio: 'pipe', shell: true })
+      const version = (vr.stdout || vr.stderr || '').toString().trim()
+      return { cmd, version }
     }
   }
-  for (const cmd of ['python', 'python3', 'py']) {
-    const r = spawnSync(cmd, ['--version'], { timeout: 5000, stdio: 'pipe', shell: true })
+  // Second: find Python that can install it (prefer 3.12/3.11)
+  for (const cmd of allCandidates) {
+    const parts = cmd.split(' ')
+    const r = spawnSync(parts[0], [...parts.slice(1), '--version'], { timeout: 3000, stdio: 'pipe', shell: true })
     if (r.status === 0) {
       const v = (r.stdout || r.stderr || '').toString().trim()
       if (v.includes('3.')) return { cmd, version: v }
