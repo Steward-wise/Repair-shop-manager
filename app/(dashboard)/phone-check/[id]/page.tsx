@@ -99,6 +99,7 @@ export default function PhoneCheckPage({ params }: { params: Promise<{ id: strin
   const [detecting, setDetecting] = useState(false)
   const [detectError, setDetectError] = useState('')
   const [setupDiag, setSetupDiag] = useState<Record<string, unknown> | null>(null)
+  const [detectedData, setDetectedData] = useState<Record<string, unknown> | null>(null)
   const [imeiChecking, setImeiChecking] = useState(false)
   const [imeiResult, setImeiResult] = useState<Record<string, unknown> | null>(null)
   const [tests, setTests] = useState<TestItem[]>([])
@@ -221,6 +222,7 @@ export default function PhoneCheckPage({ params }: { params: Promise<{ id: strin
         return
       }
       setSetupDiag(null)
+      setDetectedData(json)   // store raw detection response for hardware panel display
       // Apply detected info to check record
       const patch: Record<string, unknown> = {
         platform:      json.platform      ?? null,
@@ -770,12 +772,7 @@ export default function PhoneCheckPage({ params }: { params: Promise<{ id: strin
               )}
             </dl>
 
-            {/* DEBUG — remove after fixing */}
-            <div className="text-xs text-zinc-500 border border-zinc-700 rounded p-2 space-y-1">
-              <p>battery_health: {String(check.battery_health)}</p>
-              <p>hardware_info: {JSON.stringify(check.hardware_info)}</p>
-            </div>
-            <HardwarePanel hw={check.hardware_info} batteryHealth={check.battery_health} />
+            <HardwarePanel hw={detectedData} batteryHealth={check.battery_health} />
           </div>
 
           {/* Security panel */}
