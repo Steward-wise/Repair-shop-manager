@@ -74,7 +74,24 @@ async function setupAdb() {
 }
 
 // ── Python + pymobiledevice3 ─────────────────────────────────────────────────
+function getPythonVersion(cmd) {
+  const r = spawnSync(cmd, ['--version'], { timeout: 5000, stdio: 'pipe', shell: true })
+  if (r.status !== 0) return null
+  const v = (r.stdout || r.stderr || '').toString().trim()
+  const m = v.match(/Python (\d+)\.(\d+)/)
+  return m ? { major: parseInt(m[1]), minor: parseInt(m[2]), full: v } : null
+}
+
 function findPython() {
+  // Prefer py launcher with specific version (Python 3.12 or 3.11 ideal)
+  const preferred = ['py -3.12', 'py -3.11', 'py -3.10', 'py -3.13']
+  for (const cmd of preferred) {
+    const r = spawnSync(cmd.split(' ')[0], cmd.split(' ').slice(1).concat(['--version']), { timeout: 3000, stdio: 'pipe', shell: true })
+    if (r.status === 0) {
+      const v = (r.stdout || r.stderr || '').toString().trim()
+      if (v.includes('3.')) return { cmd, version: v }
+    }
+  }
   for (const cmd of ['python', 'python3', 'py']) {
     const r = spawnSync(cmd, ['--version'], { timeout: 5000, stdio: 'pipe', shell: true })
     if (r.status === 0) {
@@ -91,11 +108,23 @@ async function setupPymobiledevice() {
   const py = findPython()
   if (!py) {
     fail('Python 3 not found.')
-    log('\n  iPhone detection requires Python 3. Install it from:')
-    log('  https://www.python.org/downloads/windows/')
-    log('  Tick "Add Python to PATH" during install, then re-run setup.bat\n')
+    log('\n  iPhone detection requires Python 3.12. Install it from:')
+    log('  https://www.python.org/downloads/release/python-3128/')
+    log('  ✅ Tick "Add Python to PATH" during install, then re-run setup.bat\n')
     return false
   }
+
+  // Warn if Python 3.14+ (too new — no pre-built wheels for native deps)
+  const ver = getPythonVersion(py.cmd.split(' ')[0])
+  if (ver && ver.major === 3 && ver.minor >= 14) {
+    fail(`Python ${ver.full} is too new — pre-built wheels for pymobiledevice3 don't exist yet.`)
+    log('\n  ⚠  Please install Python 3.12 instead:')
+    log('  https://www.python.org/downloads/release/python-3128/')
+    log('  ✅ Tick "Add Python to PATH", then re-run setup.bat')
+    log('\n  (You can keep Python 3.14 installed — just also install 3.12)\n')
+    return false
+  }
+
   ok(`Python found: ${py.version} (${py.cmd})`)
 
   // Check if already installed
@@ -103,19 +132,34 @@ async function setupPymobiledevice() {
   if (check === 'ok') { ok('pymobiledevice3 already installed'); return true }
 
   info('Installing pymobiledevice3 via pip...')
+  info('This may take 1-2 minutes...')
   try {
-    execSync(`${py.cmd} -m pip install --upgrade pymobiledevice3`, {
-      stdio: 'inherit',
-      shell: true,
-      timeout: 120000,
-    })
+    // Try pre-built binaries only first (avoids needing C++ build tools)
+    let result = spawnSync(
+      py.cmd.split(' ')[0],
+      [...py.cmd.split(' ').slice(1), '-m', 'pip', 'install', '--only-binary', ':all:', 'pymobiledevice3'],
+      { stdio: 'inherit', shell: true, timeout: 120000 }
+    )
+
+    if (result.status !== 0) {
+      info('Pre-built wheels not available, trying with source compilation...')
+      info('(This requires Microsoft C++ Build Tools if it fails, install from:')
+      info(' https://visualstudio.microsoft.com/visual-cpp-build-tools/ )')
+      result = spawnSync(
+        py.cmd.split(' ')[0],
+        [...py.cmd.split(' ').slice(1), '-m', 'pip', 'install', 'pymobiledevice3'],
+        { stdio: 'inherit', shell: true, timeout: 180000 }
+      )
+    }
+
     const verify = run(`${py.cmd} -c "import pymobiledevice3; print('ok')"`)
     if (verify === 'ok') { ok('pymobiledevice3 installed successfully'); return true }
-    fail('Installation appeared to succeed but import failed')
+    fail('Installation failed.')
+    log('\n  If you see "C++ 14.0 required", install Python 3.12 (not 3.14):')
+    log('  https://www.python.org/downloads/release/python-3128/')
     return false
   } catch (e) {
     fail('pip install failed: ' + e.message)
-    log('\n  Try manually: ' + py.cmd + ' -m pip install pymobiledevice3\n')
     return false
   }
 }
