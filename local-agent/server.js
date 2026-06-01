@@ -415,7 +415,9 @@ function detectiOS() {
     }
     return data
   } catch (e) {
-    console.log(`  iOS Python error: ${e.message?.slice(0, 100)}`)
+    // Log full stderr so we can diagnose
+    const msg = (e.stderr || e.message || '').toString().slice(0, 500)
+    console.log(`  iOS Python error:\n${msg}`)
     return null
   }
 }
