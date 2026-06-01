@@ -25,9 +25,10 @@ const TIMEOUT = 10000
 
 // ─── CORS: allow all origins (safe — this server only binds to 127.0.0.1) ───
 function setCORS(res) {
-  res.setHeader('Access-Control-Allow-Origin',  '*')
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Origin',          '*')
+  res.setHeader('Access-Control-Allow-Methods',         'GET, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers',         'Content-Type')
+  res.setHeader('Access-Control-Allow-Private-Network', 'true')  // Required: HTTPS page → HTTP localhost
 }
 
 // ─── Run a command, return stdout or '' on any error ────────────────────────
