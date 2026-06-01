@@ -111,7 +111,7 @@ export default function ReportsPage() {
             <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
             <XAxis dataKey="date" tick={{ fill: '#71717a', fontSize: 11 }} tickFormatter={(v) => v.slice(5)} interval={4} />
             <YAxis tick={{ fill: '#71717a', fontSize: 11 }} tickFormatter={(v) => `£${v}`} width={52} />
-            <Tooltip {...tooltipStyle} formatter={(v: number) => [formatCurrency(v), 'Revenue']} labelFormatter={(l) => `Date: ${l}`} />
+            <Tooltip {...tooltipStyle} formatter={(v) => [formatCurrency(Number(v ?? 0)), 'Revenue']} labelFormatter={(l) => `Date: ${l}`} />
             <Area type="monotone" dataKey="revenue" stroke="#dc2626" strokeWidth={2} fill="url(#revenueGrad)" dot={false} activeDot={{ r: 4, fill: '#dc2626' }} />
           </AreaChart>
         </ResponsiveContainer>
@@ -127,7 +127,7 @@ export default function ReportsPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
                 <XAxis dataKey="month" tick={{ fill: '#71717a', fontSize: 11 }} />
                 <YAxis tick={{ fill: '#71717a', fontSize: 11 }} tickFormatter={(v) => `£${v}`} width={52} />
-                <Tooltip {...tooltipStyle} formatter={(v: number) => [formatCurrency(v), 'Revenue']} />
+                <Tooltip {...tooltipStyle} formatter={(v) => [formatCurrency(Number(v ?? 0)), 'Revenue']} />
                 <Bar dataKey="revenue" radius={[4, 4, 0, 0]}>
                   {data.monthOverMonth.map((entry, i) => {
                     const prev = data.monthOverMonth[i - 1]
@@ -151,7 +151,7 @@ export default function ReportsPage() {
                     <Cell key={i} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip {...tooltipStyle} formatter={(v: number, name: string) => [v, name]} />
+                <Tooltip {...tooltipStyle} formatter={(v, name) => [Number(v ?? 0), String(name ?? '')]} />
               </PieChart>
             </ResponsiveContainer>
             <div className="flex flex-col gap-1.5 flex-1 min-w-0">
@@ -176,7 +176,7 @@ export default function ReportsPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
               <XAxis dataKey="name" tick={{ fill: '#71717a', fontSize: 11 }} />
               <YAxis tick={{ fill: '#71717a', fontSize: 11 }} />
-              <Tooltip {...tooltipStyle} formatter={(v: number) => [v, 'Jobs']} />
+              <Tooltip {...tooltipStyle} formatter={(v) => [Number(v ?? 0), 'Jobs']} />
               <Bar dataKey="count" fill="#dc2626" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -189,7 +189,7 @@ export default function ReportsPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
               <XAxis dataKey="hour" tick={{ fill: '#71717a', fontSize: 11 }} />
               <YAxis tick={{ fill: '#71717a', fontSize: 11 }} />
-              <Tooltip {...tooltipStyle} formatter={(v: number) => [v, 'Jobs']} />
+              <Tooltip {...tooltipStyle} formatter={(v) => [Number(v ?? 0), 'Jobs']} />
               <Bar dataKey="count" radius={[3, 3, 0, 0]}>
                 {hourData.map((entry, i) => (
                   <Cell key={i} fill={entry.isWorking ? '#dc2626' : '#3f3f46'} />
@@ -209,7 +209,7 @@ export default function ReportsPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#27272a" horizontal={false} />
               <XAxis type="number" tick={{ fill: '#71717a', fontSize: 11 }} />
               <YAxis type="category" dataKey="name" tick={{ fill: '#71717a', fontSize: 11 }} width={70} />
-              <Tooltip {...tooltipStyle} formatter={(v: number) => [v, 'Jobs']} />
+              <Tooltip {...tooltipStyle} formatter={(v) => [Number(v ?? 0), 'Jobs']} />
               <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                 {deviceData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
               </Bar>
@@ -225,7 +225,7 @@ export default function ReportsPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#27272a" horizontal={false} />
                 <XAxis type="number" tick={{ fill: '#71717a', fontSize: 11 }} />
                 <YAxis type="category" dataKey="fault" tick={{ fill: '#71717a', fontSize: 10 }} width={100} />
-                <Tooltip {...tooltipStyle} formatter={(v: number) => [v, 'Jobs']} />
+                <Tooltip {...tooltipStyle} formatter={(v) => [Number(v ?? 0), 'Jobs']} />
                 <Bar dataKey="count" fill="#a855f7" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
