@@ -374,6 +374,7 @@ export interface PhoneCheck {
   icloud_status: string
   blacklist_status: string
   blacklist_data: Record<string, unknown> | null
+  hardware_info: Record<string, unknown> | null
   tests: import('@/lib/phone-tests').TestItem[]
   video_url: string | null
   notes: string | null

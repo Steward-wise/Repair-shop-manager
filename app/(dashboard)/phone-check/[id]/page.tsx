@@ -187,19 +187,32 @@ export default function PhoneCheckPage({ params }: { params: Promise<{ id: strin
         frp_status:    json.frp_status    ?? 'unknown',
         mdm_status:    json.mdm_status    ?? 'unknown',
         icloud_status: json.icloud_status ?? 'unknown',
-        // Store extended hardware data in notes for display
-        ...(json.display_resolution || json.ram_total || json.storage_total ? {
-          notes: [
-            json.display_resolution  ? `Display: ${json.display_resolution}${json.display_density ? ` @${json.display_density}dpi` : ''}${json.display_refresh ? ` ${json.display_refresh}Hz` : ''}` : '',
-            json.ram_total           ? `RAM: ${json.ram_total}` : '',
-            json.storage_total       ? `Storage: ${json.storage_total}${json.storage_available ? ` (${json.storage_available} free)` : ''}` : '',
-            json.wifi_mac            ? `WiFi MAC: ${json.wifi_mac}` : '',
-            json.bluetooth_mac       ? `BT MAC: ${json.bluetooth_mac}` : '',
-            json.battery_temperature ? `Battery temp: ${json.battery_temperature}` : '',
-            json.battery_voltage     ? `Battery voltage: ${json.battery_voltage}` : '',
-            json.sensors?.length     ? `Sensors: ${(json.sensors as string[]).join(', ')}` : '',
-          ].filter(Boolean).join('\n'),
-        } : {}),
+        // Store all extended hardware data in dedicated jsonb column
+        hardware_info: {
+          battery_health_label: json.battery_health_label ?? null,
+          battery_current:      json.battery_current      ?? null,
+          battery_cycles:       json.battery_cycles       ?? null,
+          battery_temperature:  json.battery_temperature  ?? null,
+          battery_voltage:      json.battery_voltage      ?? null,
+          display_resolution:   json.display_resolution   ?? null,
+          display_density:      json.display_density      ?? null,
+          display_refresh:      json.display_refresh      ?? null,
+          ram_total:            json.ram_total            ?? null,
+          ram_available:        json.ram_available        ?? null,
+          storage_total:        json.storage_total        ?? null,
+          storage_available:    json.storage_available    ?? null,
+          wifi_mac:             json.wifi_mac             ?? null,
+          bluetooth_mac:        json.bluetooth_mac        ?? null,
+          wifi_enabled:         json.wifi_enabled         ?? null,
+          bluetooth_enabled:    json.bluetooth_enabled    ?? null,
+          sensors:              json.sensors              ?? null,
+          cameras:              json.cameras              ?? null,
+          cpu_arch:             json.cpu_arch             ?? null,
+          android_id:           json.android_id           ?? null,
+          phone_number:         json.phone_number         ?? null,
+          region:               json.region               ?? null,
+          device_color:         json.device_color         ?? null,
+        },
       }
       const pRes = await fetch(`/api/phone-check/${id}`, {
         method: 'PATCH',
@@ -697,7 +710,6 @@ export default function PhoneCheckPage({ params }: { params: Promise<{ id: strin
                 { label: 'IMEI', value: check.imei, mono: true },
                 { label: 'IMEI 2', value: check.imei2, mono: true },
                 { label: 'UDID', value: check.udid ? `${check.udid.slice(0, 8)}…` : null, mono: true },
-                { label: 'Battery', value: check.battery_health != null ? `${check.battery_health}%` : null },
               ].filter(r => r.value).map(r => (
                 <div key={r.label} className="flex justify-between gap-2">
                   <dt className="text-xs text-zinc-500 flex-shrink-0">{r.label}</dt>
@@ -708,6 +720,64 @@ export default function PhoneCheckPage({ params }: { params: Promise<{ id: strin
                 <p className="text-xs text-zinc-600 italic">No device connected. Click Detect or enter manually.</p>
               )}
             </dl>
+
+            {/* Hardware info panel — shown after detection */}
+            {check.hardware_info && Object.values(check.hardware_info).some(Boolean) && (() => {
+              const h = check.hardware_info as Record<string, unknown>
+
+              // Battery health colour
+              const bh = h.battery_health as number | null
+              const bhColour = bh == null ? 'text-zinc-400'
+                : bh >= 80 ? 'text-green-400'
+                : bh >= 60 ? 'text-yellow-400'
+                : 'text-red-400'
+
+              const rows: { label: string; value: string; colour?: string }[] = []
+
+              // Battery
+              if (bh != null)                   rows.push({ label: 'Battery Health', value: `${bh}% — ${h.battery_health_label ?? ''}`, colour: bhColour })
+              if (h.battery_current != null)     rows.push({ label: 'Charge', value: `${h.battery_current}%` })
+              if (h.battery_cycles != null)      rows.push({ label: 'Cycle Count', value: String(h.battery_cycles) })
+              if (h.battery_temperature != null) rows.push({ label: 'Batt Temp', value: `${h.battery_temperature}°C` })
+              if (h.battery_voltage != null)     rows.push({ label: 'Batt Voltage', value: `${h.battery_voltage}mV` })
+
+              // Display
+              if (h.display_resolution) {
+                const disp = [h.display_resolution, h.display_density ? `${h.display_density}dpi` : null, h.display_refresh ? `${h.display_refresh}Hz` : null].filter(Boolean).join(' · ')
+                rows.push({ label: 'Display', value: disp })
+              }
+
+              // Memory / storage
+              if (h.ram_total)            rows.push({ label: 'RAM', value: `${h.ram_total}${h.ram_available ? ` (${h.ram_available} free)` : ''}` })
+              if (h.storage_total)        rows.push({ label: 'Storage', value: `${h.storage_total}${h.storage_available ? ` (${h.storage_available} free)` : ''}` })
+
+              // Connectivity
+              if (h.wifi_mac)             rows.push({ label: 'WiFi MAC', value: String(h.wifi_mac) })
+              if (h.bluetooth_mac)        rows.push({ label: 'BT MAC', value: String(h.bluetooth_mac) })
+              if (h.phone_number)         rows.push({ label: 'Phone No.', value: String(h.phone_number) })
+              if (h.cpu_arch)             rows.push({ label: 'CPU', value: String(h.cpu_arch) })
+              if (h.region)               rows.push({ label: 'Region', value: String(h.region) })
+
+              // Sensors (Android)
+              if (Array.isArray(h.sensors) && h.sensors.length > 0)
+                rows.push({ label: 'Sensors', value: (h.sensors as string[]).join(', ') })
+              if (Array.isArray(h.cameras) && h.cameras.length > 0)
+                rows.push({ label: 'Cameras', value: (h.cameras as string[]).join(', ') })
+
+              return (
+                <div className="pt-2 border-t border-zinc-800">
+                  <p className="text-xs font-semibold text-zinc-400 mb-2">📊 Hardware Details</p>
+                  <dl className="space-y-1.5">
+                    {rows.map(r => (
+                      <div key={r.label} className="flex justify-between gap-2">
+                        <dt className="text-xs text-zinc-500 flex-shrink-0">{r.label}</dt>
+                        <dd className={`text-xs text-right truncate max-w-[160px] ${r.colour ?? 'text-fg'}`}>{r.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              )
+            })()}
           </div>
 
           {/* Security panel */}

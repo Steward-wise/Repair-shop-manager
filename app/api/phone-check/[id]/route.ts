@@ -5,7 +5,7 @@ const ALLOWED = [
   'job_id', 'platform', 'device_name', 'manufacturer', 'model', 'os_version',
   'serial_number', 'imei', 'imei2', 'udid', 'battery_health',
   'frp_status', 'mdm_status', 'icloud_status', 'blacklist_status', 'blacklist_data',
-  'tests', 'video_url', 'notes', 'grade', 'status', 'purpose',
+  'tests', 'video_url', 'notes', 'grade', 'status', 'purpose', 'hardware_info',
 ]
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
