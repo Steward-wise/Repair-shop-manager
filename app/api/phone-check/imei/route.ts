@@ -7,47 +7,111 @@ export async function GET(request: NextRequest) {
   }
 
   const apiKey = process.env.IMEI_CHECK_API_KEY
-
-  if (apiKey) {
-    try {
-      // IMEI.info API v2
-      const res = await fetch(`https://api.imei.info/v2/?imei=${imei}&api=${apiKey}`, {
-        headers: { Accept: 'application/json' },
-        signal: AbortSignal.timeout(12000),
-      })
-      const data = await res.json()
-
-      if ((data.status === '200' || data.status === 200) && data.data) {
-        const d = data.data
-        const blacklisted = d.blacklist === true || d.blacklisted === true || d.gsma_blacklisted === true
-        return NextResponse.json({
-          blacklisted,
-          status: blacklisted ? 'blacklisted' : 'clean',
-          carrier: d.carrier ?? d.network ?? null,
-          country: d.country ?? null,
-          manufacturer: d.manufacturer ?? null,
-          model: d.model_name ?? d.model ?? null,
-          sim_lock: d.simlock ?? d.sim_lock ?? null,
-          raw: d,
-          source: 'imei.info',
-        })
-      }
-      // API responded but with error — fall through
-    } catch (err) {
-      console.error('IMEI check API error:', err)
-    }
+  if (!apiKey) {
+    return NextResponse.json({
+      manual: true, status: 'unknown',
+      message: 'No IMEI_CHECK_API_KEY set',
+      links: manualLinks(imei),
+    })
   }
 
-  // No API key or API failed — return manual check links
-  return NextResponse.json({
-    manual: true,
-    status: 'unknown',
-    message: apiKey ? 'IMEI check API unavailable — use manual links below' : 'No IMEI_CHECK_API_KEY set — use manual links below',
-    links: [
-      { name: 'IMEI.info', url: `https://www.imei.info/?imei=${imei}`, free: true },
-      { name: 'Swappa Blacklist Check', url: `https://swappa.com/esn?imei=${imei}`, free: true },
-      { name: 'CheckMend', url: `https://www.checkmend.com/`, free: false },
-      { name: 'GSMA Device Check', url: `https://www.gsma.com/aboutus/workprogramme/fraud-security-group/device-security-group/imei-services`, free: true },
-    ],
-  })
+  // ── imeicheck.net API ────────────────────────────────────────────────────
+  try {
+    // Step 1: Submit check
+    const submitRes = await fetch('https://api.imeicheck.net/v1/checks', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ deviceId: imei, serviceId: 1 }),
+      signal: AbortSignal.timeout(15000),
+    })
+
+    if (!submitRes.ok) {
+      const errText = await submitRes.text()
+      console.error('imeicheck.net submit error:', submitRes.status, errText)
+      throw new Error(`API returned ${submitRes.status}`)
+    }
+
+    const submitData = await submitRes.json()
+
+    // If check came back immediately with properties
+    if (submitData.properties) {
+      return NextResponse.json(formatResult(imei, submitData))
+    }
+
+    // Step 2: Poll for result if async (status: processing)
+    const checkId = submitData.id
+    if (!checkId) throw new Error('No check ID returned')
+
+    // Poll up to 10 times with 1s delay
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 1200))
+      const pollRes = await fetch(`https://api.imeicheck.net/v1/checks/${checkId}`, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json',
+        },
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!pollRes.ok) continue
+      const pollData = await pollRes.json()
+      if (pollData.status === 'done' || pollData.properties) {
+        return NextResponse.json(formatResult(imei, pollData))
+      }
+      if (pollData.status === 'failed' || pollData.status === 'error') {
+        throw new Error(`Check failed: ${pollData.message ?? pollData.status}`)
+      }
+    }
+    throw new Error('Check timed out after polling')
+
+  } catch (err) {
+    console.error('imeicheck.net error:', err)
+    return NextResponse.json({
+      manual: true,
+      status: 'unknown',
+      message: 'IMEI check failed — use manual links',
+      error: String(err),
+      links: manualLinks(imei),
+    })
+  }
+}
+
+function formatResult(imei: string, data: Record<string, unknown>) {
+  const p = (data.properties ?? {}) as Record<string, unknown>
+
+  // Blacklist status
+  const bl = String(p.blacklistStatus ?? p.gsmaStatus ?? '').toLowerCase()
+  const blacklisted = bl === 'blacklisted' || bl === 'blocked' || bl === 'reported'
+  const clean       = bl === 'clean' || bl === 'not blacklisted' || bl === 'clear'
+  const status      = blacklisted ? 'blacklisted' : clean ? 'clean' : 'unknown'
+
+  return {
+    imei,
+    blacklisted,
+    status,
+    carrier:      p.carrier      ?? p.network       ?? null,
+    country:      p.country      ?? p.countryName   ?? null,
+    manufacturer: p.manufacturer ?? p.brand         ?? null,
+    model:        p.modelName    ?? p.deviceName     ?? p.model ?? null,
+    sim_lock:     p.simLock      ?? p.simlock        ?? null,
+    warranty:     p.warrantyStatus ?? p.warranty     ?? null,
+    activation:   p.activationStatus ?? null,
+    find_my:      p.findMyiPhone ?? p.fmi            ?? null,
+    mdm:          p.mdmStatus    ?? p.mdm            ?? null,
+    lost:         p.lostMode     ?? null,
+    purchase_date:p.purchaseDate ?? p.purchaseCountry ?? null,
+    raw: p,
+    source: 'imeicheck.net',
+  }
+}
+
+function manualLinks(imei: string) {
+  return [
+    { name: 'IMEI.info',       url: `https://www.imei.info/?imei=${imei}`,   free: true },
+    { name: 'Swappa',          url: `https://swappa.com/esn?imei=${imei}`,    free: true },
+    { name: 'CheckMend',       url: 'https://www.checkmend.com/',              free: false },
+  ]
 }
