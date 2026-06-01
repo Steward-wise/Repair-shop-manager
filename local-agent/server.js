@@ -400,11 +400,12 @@ function detectiOSbasic() {
 function detectiOS() {
   if (!PYTHON || !fs.existsSync(QUERY_IOS)) return null
   try {
-    const out = execSync(`"${PYTHON}" "${QUERY_IOS}"`, {
+    // PYTHON may be "py -3.12" (cmd + arg), so don't quote the whole thing
+    const out = execSync(`${PYTHON} "${QUERY_IOS}"`, {
       timeout: TIMEOUT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
-      shell: false,
+      shell: true,
     }).trim()
     if (!out) return null
     const data = JSON.parse(out)
