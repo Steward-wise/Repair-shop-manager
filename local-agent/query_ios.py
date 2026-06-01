@@ -1,60 +1,42 @@
-"""
-iPhone info query using pymobiledevice3 v9+.
-Called by the local bridge: py -3.12 query_ios.py
-Outputs JSON to stdout.
-"""
-import json, sys, asyncio, warnings
-warnings.filterwarnings('ignore')  # suppress async warnings to keep stdout clean
+import json, sys, warnings
+warnings.filterwarnings('ignore')
 
-def fatal(msg):
-    print(json.dumps({"error": msg}))
+def out(data):
+    print(json.dumps(data))
+    sys.exit(0)
+
+def fail(msg):
+    print(json.dumps({"error": str(msg)}))
     sys.exit(1)
 
-async def get_device_info():
-    try:
-        from pymobiledevice3.lockdown import create_using_usbmux
-    except ImportError:
-        fatal("pymobiledevice3 not installed. Run: py -3.12 -m pip install pymobiledevice3")
-        return
+# ── Try sync API (older pymobiledevice3 style) ────────────────────────────────
+def try_sync():
+    from pymobiledevice3.lockdown import create_using_usbmux
+    ld = create_using_usbmux()
+    info = ld.all_values
+    return ld, info
 
+# ── Try async API (pymobiledevice3 v9+) ──────────────────────────────────────
+async def try_async():
+    from pymobiledevice3.lockdown import create_using_usbmux
+    import inspect
+    result = create_using_usbmux()
+    if inspect.isawaitable(result):
+        ld = await result
+    else:
+        ld = result
     try:
-        ld = await create_using_usbmux()
-    except Exception as e:
-        msg = str(e)
-        if 'No device' in msg or 'Unable to connect' in msg or 'not found' in msg.lower():
-            fatal("No iPhone found. Connect via USB and tap Trust on the device.")
+        info_result = ld.get_value()
+        if inspect.isawaitable(info_result):
+            info = await info_result
         else:
-            fatal(f"Connection failed: {msg}")
-        return
-
-    try:
-        info = await ld.get_value()
+            info = info_result
     except Exception:
-        try:
-            info = ld.all_values
-        except Exception as e2:
-            fatal(f"Failed to read device info: {str(e2)}")
-            return
+        info = ld.all_values
+    return ld, info
 
-    # Battery via diagnostics
-    battery = {}
-    try:
-        from pymobiledevice3.services.diagnostics import DiagnosticsService
-        async with DiagnosticsService(ld) as diag:
-            io = await diag.ioregistry_entry('AppleSmartBattery')
-            if io:
-                temp_raw = io.get('Temperature', 0)
-                battery = {
-                    'battery_health':      io.get('CurrentCapacity'),
-                    'battery_cycles':      io.get('CycleCount'),
-                    'battery_max_cap':     io.get('DesignCapacity'),
-                    'battery_voltage':     io.get('Voltage'),
-                    'battery_temperature': round((temp_raw - 2731) / 10, 1) if temp_raw else None,
-                }
-    except Exception:
-        pass
-
-    result = {
+def build_result(info):
+    return {
         'platform':          'ios',
         'manufacturer':      'Apple',
         'model':             info.get('ProductType'),
@@ -79,17 +61,22 @@ async def get_device_info():
         'icloud_status':     'clean' if info.get('ActivationState') == 'Activated' else ('locked' if info.get('ActivationState') == 'Unactivated' else 'unknown'),
         'mdm_status':        'supervised' if info.get('IsSupervised') else 'clean',
         'frp_status':        'unknown',
-        **battery,
     }
 
-    print(json.dumps(result))
-    await ld.aclose()
+# ── Try sync first ────────────────────────────────────────────────────────────
+try:
+    ld, info = try_sync()
+    out(build_result(info))
+except Exception as sync_err:
+    pass
 
-async def main():
-    try:
-        await get_device_info()
-    except Exception as e:
-        fatal(str(e))
-
-if __name__ == '__main__':
-    asyncio.run(main())
+# ── Try async ─────────────────────────────────────────────────────────────────
+try:
+    import asyncio
+    async def run():
+        ld, info = await try_async()
+        return build_result(info)
+    result = asyncio.run(run())
+    out(result)
+except Exception as async_err:
+    fail(f"sync: {sync_err} | async: {async_err}")

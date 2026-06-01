@@ -401,10 +401,9 @@ function detectiOS() {
   if (!PYTHON || !fs.existsSync(QUERY_IOS)) return null
   try {
     // PYTHON may be "py -3.12" (cmd + arg), so don't quote the whole thing
-    const out = execSync(`${PYTHON} "${QUERY_IOS}"`, {
+    const out = execSync(`${PYTHON} "${QUERY_IOS}" 2>&1`, {
       timeout: TIMEOUT,
       encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
       shell: true,
     }).trim()
     if (!out) return null
