@@ -82,6 +82,24 @@ function findIdev() {
 const ADB  = findAdb()
 const IDEV = findIdev()
 
+// ─── Find Python command (saved by setup.js, or search PATH) ─────────────────
+function findPython() {
+  // Check if setup.js saved a preferred command
+  const savedPath = path.join(__dirname, '.python_cmd')
+  if (fs.existsSync(savedPath)) {
+    const cmd = fs.readFileSync(savedPath, 'utf8').trim()
+    const r = spawnSync(cmd, ['--version'], { timeout: 3000, stdio: 'ignore', shell: true })
+    if (r.status === 0) return cmd
+  }
+  for (const cmd of ['python', 'python3', 'py']) {
+    const r = spawnSync(cmd, ['-c', 'import pymobiledevice3'], { timeout: 5000, stdio: 'ignore', shell: true })
+    if (r.status === 0) return cmd
+  }
+  return null
+}
+const PYTHON = findPython()
+const QUERY_IOS = path.join(__dirname, 'query_ios.py')
+
 // ─── ADB helper ──────────────────────────────────────────────────────────────
 function adb(args) {
   if (!ADB) return ''
@@ -368,61 +386,51 @@ function detectiOSbasic() {
   }
 }
 
-// ─── FULL iOS DETECTION ──────────────────────────────────────────────────────
+// ─── FULL iOS DETECTION via pymobiledevice3 (Python) ─────────────────────────
 function detectiOS() {
+  if (!PYTHON || !fs.existsSync(QUERY_IOS)) return null
+  try {
+    const out = execSync(`"${PYTHON}" "${QUERY_IOS}"`, {
+      timeout: TIMEOUT,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: false,
+    }).trim()
+    if (!out) return null
+    const data = JSON.parse(out)
+    if (data.error) {
+      console.log(`  iOS query error: ${data.error}`)
+      return null
+    }
+    return data
+  } catch (e) {
+    console.log(`  iOS Python error: ${e.message?.slice(0, 100)}`)
+    return null
+  }
+}
+
+// ─── Legacy ideviceinfo detection (fallback if ideviceinfo.exe present) ──────
+function detectiOSlegacy() {
   if (!IDEV) return null
   const udid = idev('-k UniqueDeviceID')
-  if (!udid || udid.length < 10 || udid.toLowerCase().includes('error') || udid.toLowerCase().includes('no device')) return null
-
-  const model          = idev('-k ProductType')
-  const deviceName     = idev('-k DeviceName')
-  const osVersion      = idev('-k ProductVersion')
-  const serial         = idev('-k SerialNumber')
-  const imei           = idev('-k InternationalMobileEquipmentIdentity')
-  const activationState= idev('-k ActivationState')
-  const isSupervised   = idev('-k IsSupervised')
-  const battCapacity   = idev('-k BatteryCurrentCapacity')
-  const hwModel        = idev('-k HardwareModel')
-  const wifiMac        = idev('-k WiFiAddress')
-  const btMac          = idev('-k BluetoothAddress')
-  const cpuArch        = idev('-k CPUArchitecture')
-  const totalDisk      = idev('-k TotalDiskCapacity')
-  const freeDisk       = idev('-k TotalSystemCapacity')
-  const color          = idev('-k DeviceColor')
-  const regionInfo     = idev('-k RegionInfo')
-  const simStatus      = idev('-k PhoneNumber')
-
-  const icloudStatus = activationState === 'Activated' ? 'clean'
-    : activationState === 'Unactivated' ? 'locked'
-    : activationState ? 'unknown' : 'unknown'
-
+  if (!udid || udid.length < 10 || udid.toLowerCase().includes('error')) return null
+  const imei = idev('-k InternationalMobileEquipmentIdentity')
+  const activationState = idev('-k ActivationState')
   return {
-    platform:         'ios',
-    manufacturer:     'Apple',
-    model:            model        || null,
-    device_name:      deviceName   || null,
-    os_version:       osVersion ? `iOS ${osVersion}` : null,
-    serial_number:    serial       || null,
-    imei:             imei && /^\d{14,15}$/.test(imei) ? imei : null,
-    udid:             udid         || null,
-    hardware_model:   hwModel      || null,
-    cpu_arch:         cpuArch      || null,
-    device_color:     color        || null,
-    region:           regionInfo   || null,
-    battery_health:   battCapacity ? parseInt(battCapacity) : null,
+    platform: 'ios', manufacturer: 'Apple',
+    model:         idev('-k ProductType')        || null,
+    device_name:   idev('-k DeviceName')         || null,
+    os_version:    idev('-k ProductVersion') ? `iOS ${idev('-k ProductVersion')}` : null,
+    serial_number: idev('-k SerialNumber')        || null,
+    imei:          imei && /^\d{14,15}$/.test(imei) ? imei : null,
+    udid,
+    battery_health: idev('-k BatteryCurrentCapacity') ? parseInt(idev('-k BatteryCurrentCapacity')) : null,
     activation_state: activationState || null,
-    icloud_status:    icloudStatus,
-    mdm_status:       isSupervised === 'true' ? 'supervised' : 'clean',
-    frp_status:       'unknown',
-    // Connectivity
-    wifi_mac:         wifiMac || null,
-    bluetooth_mac:    btMac   || null,
-    wifi_enabled:     !!wifiMac && wifiMac !== '00:00:00:00:00:00',
-    bluetooth_enabled:!!btMac  && btMac  !== '00:00:00:00:00:00',
-    phone_number:     simStatus || null,
-    // Storage
-    storage_total:    totalDisk ? Math.round(parseInt(totalDisk) / 1e9) + ' GB' : null,
-    storage_available:freeDisk  ? Math.round(parseInt(freeDisk)  / 1e9) + ' GB' : null,
+    icloud_status: activationState === 'Activated' ? 'clean' : activationState === 'Unactivated' ? 'locked' : 'unknown',
+    mdm_status:    idev('-k IsSupervised') === 'true' ? 'supervised' : 'clean',
+    wifi_mac:      idev('-k WiFiAddress') || null,
+    bluetooth_mac: idev('-k BluetoothAddress') || null,
+    frp_status:    'unknown',
   }
 }
 
@@ -520,8 +528,8 @@ const server = http.createServer((req, res) => {
       return
     }
 
-    // Try iOS (full ideviceinfo)
-    const ios = detectiOS()
+    // Try iOS via pymobiledevice3 (Python) — most reliable, supports iOS 16/17/18
+    const ios = detectiOS() || detectiOSlegacy()
     if (ios) {
       console.log(`  → iOS: ${ios.device_name} (${ios.model})`)
       res.writeHead(200)
@@ -560,13 +568,15 @@ const server = http.createServer((req, res) => {
 console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 console.log('  404Fixed Local Device Bridge v2')
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-console.log(`  ADB:          ${ADB  ? '✓ ' + ADB         : '✗  Not found'}`)
-console.log(`  ideviceinfo:  ${IDEV ? '✓ ' + IDEV        : '✗  Not found'}`)
+console.log(`  ADB (Android):    ${ADB    ? '✓ found' : '✗  Not found — run setup.bat'}`)
+console.log(`  Python+pymobile:  ${PYTHON ? '✓ found' : '✗  Not found — run setup.bat'}`)
+console.log(`  ideviceinfo:      ${IDEV   ? '✓ found' : '–  Not needed if Python is present'}`)
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
-if (!ADB || !IDEV) {
-  console.log('\n  ⚠  Run setup.bat to auto-download missing tools.')
-  console.log('     iPhone can still be detected via Windows PnP (basic info only).\n')
+if (!ADB && !PYTHON) {
+  console.log('\n  ⚠  Run setup.bat to install required tools.\n')
+} else if (!PYTHON && !IDEV) {
+  console.log('\n  ⚠  iPhone support not available. Run setup.bat to install Python + pymobiledevice3.\n')
 }
 
 server.listen(PORT, '127.0.0.1', () => {
