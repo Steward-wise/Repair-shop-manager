@@ -49,6 +49,7 @@ export default function PhoneCheckPage({ params }: { params: Promise<{ id: strin
   const [saving, setSaving] = useState(false)
   const [detecting, setDetecting] = useState(false)
   const [detectError, setDetectError] = useState('')
+  const [setupDiag, setSetupDiag] = useState<Record<string, unknown> | null>(null)
   const [imeiChecking, setImeiChecking] = useState(false)
   const [imeiResult, setImeiResult] = useState<Record<string, unknown> | null>(null)
   const [tests, setTests] = useState<TestItem[]>([])
@@ -156,28 +157,49 @@ export default function PhoneCheckPage({ params }: { params: Promise<{ id: strin
       }
       const json = await res.json()
       if (!res.ok) {
-        const localNote = source === 'server'
-          ? '\n\nTip: Run local-agent/start.bat on this computer to detect phones plugged in here.'
-          : ''
-        setDetectError((json.error ?? 'Detection failed') + localNote)
+        setDetectError(json.error ?? 'Detection failed')
+        // Fetch setup diagnostics from local bridge to show helpful info
+        if (source === 'local') {
+          try {
+            const diagRes = await fetch('http://localhost:7777/setup', { signal: AbortSignal.timeout(3000) })
+            const diag = await diagRes.json()
+            setSetupDiag(diag)
+          } catch {}
+        } else {
+          setDetectError((json.error ?? 'Detection failed') + '\n\nTip: Run local-agent/start.bat on this computer to detect phones plugged in here.')
+        }
         setManualMode(true)
         return
       }
+      setSetupDiag(null)
       // Apply detected info to check record
       const patch: Record<string, unknown> = {
-        platform: json.platform ?? null,
-        manufacturer: json.manufacturer ?? null,
-        model: json.model ?? null,
-        device_name: json.device_name ?? null,
-        os_version: json.os_version ?? null,
+        platform:      json.platform      ?? null,
+        manufacturer:  json.manufacturer  ?? null,
+        model:         json.model         ?? null,
+        device_name:   json.device_name   ?? null,
+        os_version:    json.os_version    ?? null,
         serial_number: json.serial_number ?? null,
-        imei: json.imei ?? null,
-        imei2: json.imei2 ?? null,
-        udid: json.udid ?? null,
+        imei:          json.imei          ?? null,
+        imei2:         json.imei2         ?? null,
+        udid:          json.udid          ?? null,
         battery_health: json.battery_health ?? null,
-        frp_status: json.frp_status ?? 'unknown',
-        mdm_status: json.mdm_status ?? 'unknown',
+        frp_status:    json.frp_status    ?? 'unknown',
+        mdm_status:    json.mdm_status    ?? 'unknown',
         icloud_status: json.icloud_status ?? 'unknown',
+        // Store extended hardware data in notes for display
+        ...(json.display_resolution || json.ram_total || json.storage_total ? {
+          notes: [
+            json.display_resolution  ? `Display: ${json.display_resolution}${json.display_density ? ` @${json.display_density}dpi` : ''}${json.display_refresh ? ` ${json.display_refresh}Hz` : ''}` : '',
+            json.ram_total           ? `RAM: ${json.ram_total}` : '',
+            json.storage_total       ? `Storage: ${json.storage_total}${json.storage_available ? ` (${json.storage_available} free)` : ''}` : '',
+            json.wifi_mac            ? `WiFi MAC: ${json.wifi_mac}` : '',
+            json.bluetooth_mac       ? `BT MAC: ${json.bluetooth_mac}` : '',
+            json.battery_temperature ? `Battery temp: ${json.battery_temperature}` : '',
+            json.battery_voltage     ? `Battery voltage: ${json.battery_voltage}` : '',
+            json.sensors?.length     ? `Sensors: ${(json.sensors as string[]).join(', ')}` : '',
+          ].filter(Boolean).join('\n'),
+        } : {}),
       }
       const pRes = await fetch(`/api/phone-check/${id}`, {
         method: 'PATCH',
@@ -600,9 +622,50 @@ export default function PhoneCheckPage({ params }: { params: Promise<{ id: strin
             </div>
 
             {detectError && (
-              <div className="bg-red-900/20 border border-red-800/50 rounded-lg p-3 space-y-1">
-                <p className="text-xs text-red-400">{detectError}</p>
-                <button onClick={() => setManualMode(true)} className="text-xs text-zinc-400 underline">Enter manually</button>
+              <div className="bg-red-900/20 border border-red-800/50 rounded-lg p-3 space-y-2">
+                <p className="text-xs text-red-400 font-medium">{detectError}</p>
+
+                {setupDiag && (
+                  <div className="space-y-2 pt-1">
+                    {/* ADB status */}
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className={(setupDiag.adb as {found:boolean})?.found ? 'text-green-400' : 'text-red-400'}>
+                        {(setupDiag.adb as {found:boolean})?.found ? '✓' : '✗'} ADB
+                      </span>
+                      {(setupDiag.adb as {found:boolean,devices:{status:string}[]})?.devices?.length > 0 ? (
+                        <span className="text-zinc-400">
+                          {(setupDiag.adb as {devices:{status:string}[]}).devices.map((d:{status:string}) =>
+                            d.status === 'unauthorized' ? '⚠ Device unauthorized — tap Allow on phone' :
+                            d.status === 'authorized'   ? '✓ Device connected' : `⚠ ${d.status}`
+                          ).join(', ')}
+                        </span>
+                      ) : (setupDiag.adb as {found:boolean})?.found ? (
+                        <span className="text-zinc-500">No Android device detected</span>
+                      ) : null}
+                    </div>
+                    {/* ideviceinfo status */}
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className={(setupDiag.idev as {found:boolean})?.found ? 'text-green-400' : 'text-zinc-500'}>
+                        {(setupDiag.idev as {found:boolean})?.found ? '✓' : '–'} ideviceinfo (iPhone)
+                      </span>
+                      {(setupDiag.idev as {found:boolean,devices:{name:string}[]})?.devices?.length > 0 && (
+                        <span className="text-green-400">✓ {(setupDiag.idev as {devices:{name:string}[]}).devices[0].name} connected</span>
+                      )}
+                    </div>
+                    {/* Instructions */}
+                    {(setupDiag.instructions as {android?:string,iphone?:string})?.android && (
+                      <p className="text-xs text-yellow-400">{(setupDiag.instructions as {android:string}).android}</p>
+                    )}
+                    {(setupDiag.instructions as {android?:string,iphone?:string})?.iphone && (
+                      <p className="text-xs text-zinc-500">{(setupDiag.instructions as {iphone:string}).iphone}</p>
+                    )}
+                  </div>
+                )}
+
+                {!setupDiag && (
+                  <p className="text-xs text-zinc-500">Make sure local-agent/start.bat is running on this computer.</p>
+                )}
+                <button onClick={() => setManualMode(true)} className="text-xs text-zinc-400 underline">Enter manually instead</button>
               </div>
             )}
 
