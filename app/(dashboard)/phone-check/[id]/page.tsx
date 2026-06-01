@@ -770,6 +770,11 @@ export default function PhoneCheckPage({ params }: { params: Promise<{ id: strin
               )}
             </dl>
 
+            {/* DEBUG — remove after fixing */}
+            <div className="text-xs text-zinc-500 border border-zinc-700 rounded p-2 space-y-1">
+              <p>battery_health: {String(check.battery_health)}</p>
+              <p>hardware_info: {JSON.stringify(check.hardware_info)}</p>
+            </div>
             <HardwarePanel hw={check.hardware_info} batteryHealth={check.battery_health} />
           </div>
 
