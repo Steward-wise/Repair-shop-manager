@@ -34,6 +34,55 @@ function SecBadge({ status, label }: { status: string; label: string }) {
   )
 }
 
+function HardwarePanel({ hw, batteryHealth }: { hw: Record<string, unknown> | null; batteryHealth: number | null }) {
+  const h = hw ?? {}
+
+  type Row = { label: string; value: string; colour?: string }
+  const rows: Row[] = []
+
+  // Battery health — prefer hw value, fall back to top-level batteryHealth
+  const bh = (h.battery_health as number | null) ?? batteryHealth
+  const bhColour = bh == null ? '' : bh >= 80 ? 'text-green-400' : bh >= 60 ? 'text-yellow-400' : 'text-red-400'
+  if (bh != null) rows.push({ label: 'Battery Health', value: `${bh}%${h.battery_health_label ? ` — ${h.battery_health_label}` : ''}`, colour: bhColour })
+  if (h.battery_current != null) rows.push({ label: 'Charge Level', value: `${h.battery_current}%` })
+  if (h.battery_cycles != null)  rows.push({ label: 'Cycle Count',  value: String(h.battery_cycles) })
+  if (h.battery_temperature != null) rows.push({ label: 'Batt Temp', value: `${h.battery_temperature}°C` })
+  if (h.battery_voltage != null)     rows.push({ label: 'Voltage',   value: `${h.battery_voltage}mV` })
+
+  if (h.storage_total) rows.push({ label: 'Storage', value: `${h.storage_total}${h.storage_available ? ` (${h.storage_available} free)` : ''}` })
+  if (h.ram_total)     rows.push({ label: 'RAM',     value: `${h.ram_total}${h.ram_available ? ` (${h.ram_available} free)` : ''}` })
+
+  if (h.display_resolution) {
+    const parts = [h.display_resolution, h.display_density ? `${h.display_density}dpi` : null, h.display_refresh ? `${h.display_refresh}Hz` : null].filter(Boolean)
+    rows.push({ label: 'Display', value: parts.join(' · ') as string })
+  }
+  if (h.cpu_arch)       rows.push({ label: 'CPU Arch',   value: String(h.cpu_arch) })
+  if (h.wifi_mac)       rows.push({ label: 'WiFi MAC',   value: String(h.wifi_mac) })
+  if (h.bluetooth_mac)  rows.push({ label: 'BT MAC',     value: String(h.bluetooth_mac) })
+  if (h.phone_number)   rows.push({ label: 'Phone No.',  value: String(h.phone_number) })
+  if (h.region)         rows.push({ label: 'Region',     value: String(h.region) })
+  if (Array.isArray(h.cameras) && h.cameras.length > 0)
+    rows.push({ label: 'Cameras', value: (h.cameras as string[]).join(', ') })
+  if (Array.isArray(h.sensors) && h.sensors.length > 0)
+    rows.push({ label: 'Sensors', value: (h.sensors as string[]).slice(0, 6).join(', ') })
+
+  if (rows.length === 0) return null
+
+  return (
+    <div className="pt-2 border-t border-zinc-800">
+      <p className="text-xs font-semibold text-zinc-400 mb-2">📊 Hardware Details</p>
+      <dl className="space-y-1.5">
+        {rows.map(r => (
+          <div key={r.label} className="flex justify-between gap-2">
+            <dt className="text-xs text-zinc-500 flex-shrink-0">{r.label}</dt>
+            <dd className={`text-xs text-right truncate max-w-[160px] ${r.colour ?? 'text-fg'}`}>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
+}
+
 function fmtTime(s: number) {
   const m = Math.floor(s / 60)
   const sec = s % 60
@@ -721,65 +770,7 @@ export default function PhoneCheckPage({ params }: { params: Promise<{ id: strin
               )}
             </dl>
 
-            {/* Hardware info panel — shown after detection */}
-            {(check.hardware_info != null || check.battery_health != null) && (() => {
-              const h = (check.hardware_info ?? {}) as Record<string, unknown>
-
-              // Battery health colour
-              const bh = h.battery_health as number | null
-              const bhColour = bh == null ? 'text-zinc-400'
-                : bh >= 80 ? 'text-green-400'
-                : bh >= 60 ? 'text-yellow-400'
-                : 'text-red-400'
-
-              const rows: { label: string; value: string; colour?: string }[] = []
-
-              // Battery — use hardware_info.battery_health or fall back to check.battery_health
-              const displayBh = bh ?? check.battery_health
-              const displayBhColour = displayBh == null ? 'text-zinc-400' : displayBh >= 80 ? 'text-green-400' : displayBh >= 60 ? 'text-yellow-400' : 'text-red-400'
-              if (displayBh != null)             rows.push({ label: 'Battery Health', value: `${displayBh}%${h.battery_health_label ? ` — ${h.battery_health_label}` : ''}`, colour: displayBhColour })
-              if (h.battery_current != null)     rows.push({ label: 'Charge', value: `${h.battery_current}%` })
-              if (h.battery_cycles != null)      rows.push({ label: 'Cycle Count', value: String(h.battery_cycles) })
-              if (h.battery_temperature != null) rows.push({ label: 'Batt Temp', value: `${h.battery_temperature}°C` })
-              if (h.battery_voltage != null)     rows.push({ label: 'Batt Voltage', value: `${h.battery_voltage}mV` })
-
-              // Display
-              if (h.display_resolution) {
-                const disp = [h.display_resolution, h.display_density ? `${h.display_density}dpi` : null, h.display_refresh ? `${h.display_refresh}Hz` : null].filter(Boolean).join(' · ')
-                rows.push({ label: 'Display', value: disp })
-              }
-
-              // Memory / storage
-              if (h.ram_total)            rows.push({ label: 'RAM', value: `${h.ram_total}${h.ram_available ? ` (${h.ram_available} free)` : ''}` })
-              if (h.storage_total)        rows.push({ label: 'Storage', value: `${h.storage_total}${h.storage_available ? ` (${h.storage_available} free)` : ''}` })
-
-              // Connectivity
-              if (h.wifi_mac)             rows.push({ label: 'WiFi MAC', value: String(h.wifi_mac) })
-              if (h.bluetooth_mac)        rows.push({ label: 'BT MAC', value: String(h.bluetooth_mac) })
-              if (h.phone_number)         rows.push({ label: 'Phone No.', value: String(h.phone_number) })
-              if (h.cpu_arch)             rows.push({ label: 'CPU', value: String(h.cpu_arch) })
-              if (h.region)               rows.push({ label: 'Region', value: String(h.region) })
-
-              // Sensors (Android)
-              if (Array.isArray(h.sensors) && h.sensors.length > 0)
-                rows.push({ label: 'Sensors', value: (h.sensors as string[]).join(', ') })
-              if (Array.isArray(h.cameras) && h.cameras.length > 0)
-                rows.push({ label: 'Cameras', value: (h.cameras as string[]).join(', ') })
-
-              return (
-                <div className="pt-2 border-t border-zinc-800">
-                  <p className="text-xs font-semibold text-zinc-400 mb-2">📊 Hardware Details</p>
-                  <dl className="space-y-1.5">
-                    {rows.map(r => (
-                      <div key={r.label} className="flex justify-between gap-2">
-                        <dt className="text-xs text-zinc-500 flex-shrink-0">{r.label}</dt>
-                        <dd className={`text-xs text-right truncate max-w-[160px] ${r.colour ?? 'text-fg'}`}>{r.value}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </div>
-              )
-            })()}
+            <HardwarePanel hw={check.hardware_info} batteryHealth={check.battery_health} />
           </div>
 
           {/* Security panel */}
