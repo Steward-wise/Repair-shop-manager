@@ -722,8 +722,8 @@ export default function PhoneCheckPage({ params }: { params: Promise<{ id: strin
             </dl>
 
             {/* Hardware info panel — shown after detection */}
-            {check.hardware_info && Object.values(check.hardware_info).some(Boolean) && (() => {
-              const h = check.hardware_info as Record<string, unknown>
+            {(check.hardware_info != null || check.battery_health != null) && (() => {
+              const h = (check.hardware_info ?? {}) as Record<string, unknown>
 
               // Battery health colour
               const bh = h.battery_health as number | null
@@ -734,8 +734,10 @@ export default function PhoneCheckPage({ params }: { params: Promise<{ id: strin
 
               const rows: { label: string; value: string; colour?: string }[] = []
 
-              // Battery
-              if (bh != null)                   rows.push({ label: 'Battery Health', value: `${bh}% — ${h.battery_health_label ?? ''}`, colour: bhColour })
+              // Battery — use hardware_info.battery_health or fall back to check.battery_health
+              const displayBh = bh ?? check.battery_health
+              const displayBhColour = displayBh == null ? 'text-zinc-400' : displayBh >= 80 ? 'text-green-400' : displayBh >= 60 ? 'text-yellow-400' : 'text-red-400'
+              if (displayBh != null)             rows.push({ label: 'Battery Health', value: `${displayBh}%${h.battery_health_label ? ` — ${h.battery_health_label}` : ''}`, colour: displayBhColour })
               if (h.battery_current != null)     rows.push({ label: 'Charge', value: `${h.battery_current}%` })
               if (h.battery_cycles != null)      rows.push({ label: 'Cycle Count', value: String(h.battery_cycles) })
               if (h.battery_temperature != null) rows.push({ label: 'Batt Temp', value: `${h.battery_temperature}°C` })
