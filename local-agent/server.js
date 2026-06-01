@@ -83,20 +83,27 @@ const ADB  = findAdb()
 const IDEV = findIdev()
 
 // ─── Find Python command (saved by setup.js, or search PATH) ─────────────────
+function tryPython(cmd) {
+  try {
+    const out = execSync(`${cmd} -c "import pymobiledevice3; print('ok')"`, {
+      timeout: 8000, encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      shell: true,
+    }).trim()
+    return out === 'ok'
+  } catch { return false }
+}
+
 function findPython() {
   // Check if setup.js saved a preferred command
   const savedPath = path.join(__dirname, '.python_cmd')
   if (fs.existsSync(savedPath)) {
     const cmd = fs.readFileSync(savedPath, 'utf8').trim()
-    const parts = cmd.split(' ')
-    const r = spawnSync(parts[0], [...parts.slice(1), '-c', 'import pymobiledevice3'], { timeout: 5000, stdio: 'ignore', shell: true })
-    if (r.status === 0) return cmd
+    if (tryPython(cmd)) return cmd
   }
   // Try versioned py launcher first, then fallbacks
-  for (const cmd of ['py -3.12', 'py -3.11', 'py -3.13', 'py -3.10', 'python', 'python3', 'py']) {
-    const parts = cmd.split(' ')
-    const r = spawnSync(parts[0], [...parts.slice(1), '-c', 'import pymobiledevice3'], { timeout: 5000, stdio: 'ignore', shell: true })
-    if (r.status === 0) return cmd
+  for (const cmd of ['py -3.12', 'py -3.11', 'py -3.13', 'py -3.10', 'python3', 'python', 'py']) {
+    if (tryPython(cmd)) return cmd
   }
   return null
 }
