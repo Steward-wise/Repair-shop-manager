@@ -103,7 +103,7 @@ async function submitQuote(e) {
   }
 
   try {
-    const res = await fetch('/.netlify/functions/quote-request', {
+    const res = await fetch('https://app.404fixed.co.uk/api/quotes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

@@ -2,6 +2,16 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { sendNewQuoteAlert } from '@/lib/resend'
 
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS })
+}
+
 export async function GET(request: NextRequest) {
   const supabase = createAdminClient()
   const { searchParams } = new URL(request.url)
@@ -38,12 +48,12 @@ export async function POST(request: NextRequest) {
       matched_rule_id: matched?.id ?? null,
     }).select().single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: CORS })
 
     // Notify shop owner by email
     sendNewQuoteAlert(data).catch(console.error)
 
-    return NextResponse.json({ quote: data }, { status: 201 })
+    return NextResponse.json({ quote: data }, { status: 201, headers: CORS })
   } catch {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   }
