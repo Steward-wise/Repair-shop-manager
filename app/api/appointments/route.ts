@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { sendAppointmentConfirmation, sendNewQuoteAlert } from '@/lib/resend'
+import { sendAppointmentConfirmation } from '@/lib/resend'
 
 export async function GET(request: NextRequest) {
   const supabase = createAdminClient()
@@ -65,12 +65,6 @@ export async function POST(request: NextRequest) {
       customer_email, customer_name, deviceInfo || 'Your device',
       dateFormatted, timeFormatted, data.reschedule_token
     )
-
-    // Notify shop
-    const shopEmail = process.env.DIGEST_EMAIL ?? process.env.RESEND_FROM_EMAIL
-    if (shopEmail && process.env.RESEND_API_KEY) {
-      await sendNewQuoteAlert(`${customer_name} (Appointment booked)`, deviceInfo || 'Device', `${dateFormatted} at ${timeFormatted}`, null)
-    }
 
     return NextResponse.json({ appointment: data }, { status: 201 })
   } catch {

@@ -284,26 +284,6 @@ export async function sendQuoteToCustomer(
   } catch { return false }
 }
 
-export async function sendNewQuoteAlert(customerName: string, deviceInfo: string, problemDescription: string, suggestedPrice: number | null): Promise<boolean> {
-  const to = process.env.DIGEST_EMAIL ?? process.env.RESEND_FROM_EMAIL
-  if (!process.env.RESEND_API_KEY || !to) return false
-  const body = `
-    <p style="margin:0 0 20px;color:#fafafa;font-size:16px;">A new quote request has been submitted.</p>
-    <table width="100%" cellpadding="0" cellspacing="0" style="background:#27272a;border-radius:8px;padding:20px;margin-bottom:20px;">
-      <tr><td style="padding:8px 0;"><span style="color:#a1a1aa;font-size:14px;">Customer</span><span style="float:right;color:#fafafa;">${customerName}</span></td></tr>
-      <tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Device</span><span style="float:right;color:#fafafa;">${deviceInfo}</span></td></tr>
-      ${suggestedPrice != null ? `<tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Auto-quoted</span><span style="float:right;color:#fafafa;font-weight:700;">£${suggestedPrice.toFixed(2)}</span></td></tr>` : ''}
-    </table>
-    <p style="color:#a1a1aa;font-size:14px;margin:0 0 8px;">Problem:</p>
-    <p style="background:#27272a;border-radius:8px;padding:16px;color:#fafafa;font-size:14px;line-height:1.6;margin:0 0 20px;">${problemDescription}</p>
-    <a href="${appUrl()}/quotes" style="display:inline-block;background:#dc2626;color:white;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">Review in App →</a>`
-  try {
-    const { error } = await resend.emails.send({ from: FROM, to, subject: `New quote request — ${customerName} · ${deviceInfo}`, html: emailShell('New Quote Request', body) })
-    if (error) { console.error('New quote alert error:', error); return false }
-    return true
-  } catch { return false }
-}
-
 export async function sendAppointmentConfirmation(
   to: string, customerName: string, deviceInfo: string, dateStr: string, timeStr: string,
   rescheduleToken?: string
