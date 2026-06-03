@@ -378,3 +378,68 @@ export async function sendNewQuoteAlert(quote: {
     return true
   } catch { return false }
 }
+
+export async function sendJobQuoteApproval({
+  to, customerName, deviceInfo, fault, price, paymentUrl, ticketNumber, shopName,
+}: {
+  to: string
+  customerName: string
+  deviceInfo: string
+  fault: string
+  price: number
+  paymentUrl: string
+  ticketNumber: number
+  shopName: string
+}): Promise<boolean> {
+  if (!process.env.RESEND_API_KEY) return false
+
+  const priceStr = `£${price.toFixed(2)}`
+  const body = `
+    <p style="margin:0 0 16px;font-size:16px;color:#a1a1aa;">Hi ${customerName},</p>
+    <p style="margin:0 0 24px;font-size:16px;color:#fafafa;line-height:1.6;">
+      We've completed our diagnosis of your <strong>${deviceInfo}</strong> and your repair quote is ready.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#27272a;border-radius:8px;padding:20px;margin-bottom:24px;">
+      <tr><td style="padding:8px 0;"><span style="color:#a1a1aa;font-size:14px;">Device</span><span style="float:right;color:#fafafa;">${deviceInfo}</span></td></tr>
+      ${fault ? `<tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Fault</span><span style="float:right;color:#fafafa;">${fault}</span></td></tr>` : ''}
+      <tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Repair Cost</span><span style="float:right;color:#22c55e;font-weight:700;font-size:18px;">${priceStr}</span></td></tr>
+      <tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Ticket</span><span style="float:right;color:#fafafa;font-family:monospace;">#${String(ticketNumber).padStart(4,'0')}</span></td></tr>
+    </table>
+    <p style="margin:0 0 20px;color:#a1a1aa;font-size:14px;line-height:1.6;">
+      To approve this repair and confirm your booking, please click the button below to pay securely online.
+      Your device will be prioritised for repair once payment is received.
+    </p>
+    <a href="${paymentUrl}" style="display:inline-block;background:#22c55e;color:white;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;margin-bottom:20px;">
+      ✓ Approve &amp; Pay ${priceStr} →
+    </a>
+    <p style="margin:16px 0 0;color:#52525b;font-size:12px;">
+      This payment link expires in 24 hours. If you have any questions, please contact us.
+      ${SHOP_PHONE ? `Call us on <a href="tel:${SHOP_PHONE}" style="color:#dc2626;">${SHOP_PHONE}</a>.` : ''}
+    </p>`
+
+  const text = [
+    `Hi ${customerName},`,
+    '',
+    `Your repair quote for ${deviceInfo} is ready.`,
+    '',
+    `Fault: ${fault}`,
+    `Repair cost: ${priceStr}`,
+    `Ticket: #${String(ticketNumber).padStart(4,'0')}`,
+    '',
+    `Approve and pay here: ${paymentUrl}`,
+    '',
+    SHOP_PHONE ? `Questions? Call ${SHOP_PHONE}` : '',
+  ].filter(s => s !== undefined).join('\n').trim()
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM,
+      to,
+      subject: `Your repair quote is ready — ${priceStr} · ${shopName}`,
+      html: emailShell(`Repair Quote — ${priceStr}`, body),
+      text,
+    })
+    if (error) { console.error('Quote approval email error:', error); return false }
+    return true
+  } catch { return false }
+}

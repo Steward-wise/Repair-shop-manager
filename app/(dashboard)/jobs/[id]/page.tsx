@@ -12,7 +12,7 @@ import {
   type Job, type JobStatus, type InventoryItem, type JobPart, type JobTimeLog
 } from '@/types'
 
-const STATUS_FLOW: JobStatus[] = ['intake', 'diagnosed', 'in_progress', 'waiting_parts', 'ready', 'collected']
+const STATUS_FLOW: JobStatus[] = ['intake', 'diagnosed', 'awaiting_approval', 'awaiting_repair', 'in_progress', 'waiting_parts', 'ready', 'collected']
 
 export default function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -42,6 +42,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const [elapsed, setElapsed] = useState(0) // seconds
   const [timerTechName, setTimerTechName] = useState('')
   const [sendingRating, setSendingRating] = useState(false)
+  const [sendingApproval, setSendingApproval] = useState(false)
   const [checklist, setChecklist] = useState<{ label: string; checked: boolean }[]>([])
 
   useEffect(() => {
@@ -211,6 +212,29 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
       toast.success(newStatus === 'paid' ? 'Marked as fully paid' : newStatus === 'deposit_paid' ? 'Deposit recorded' : 'Payment status updated')
     }
     setMarkingPaid(false)
+  }
+
+  async function sendQuoteForApproval() {
+    if (!finalPrice || parseFloat(finalPrice) <= 0) {
+      toast.error('Enter a final price first')
+      return
+    }
+    // Save price first
+    await fetch(`/api/jobs/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ final_price: parseFloat(finalPrice), technician_name: technicianName, internal_notes: internalNote }),
+    })
+    setSendingApproval(true)
+    const res = await fetch(`/api/jobs/${id}/send-quote`, { method: 'POST' })
+    const data = await res.json()
+    if (!res.ok) {
+      toast.error(data.error ?? 'Failed to send quote')
+    } else {
+      toast.success('Quote sent to customer for approval!')
+      loadJob()
+    }
+    setSendingApproval(false)
   }
 
   async function sendRatingRequest() {
@@ -524,6 +548,50 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               <button onClick={saveInternalNote} disabled={savingNote} className="btn-primary w-full text-sm">
                 {savingNote ? 'Saving…' : 'Save changes'}
               </button>
+
+              {/* Quote approval — shown when diagnosed and price is set */}
+              {job.status === 'diagnosed' && (
+                <div className="pt-3 border-t border-zinc-800 space-y-2">
+                  <p className="text-xs text-zinc-400">Send the customer a payment link to approve and pay for this repair.</p>
+                  <button
+                    onClick={sendQuoteForApproval}
+                    disabled={sendingApproval || !finalPrice || parseFloat(finalPrice) <= 0}
+                    className="w-full flex items-center justify-center gap-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white text-sm font-semibold py-2.5 px-4 rounded-lg transition-colors"
+                  >
+                    {sendingApproval ? (
+                      <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Sending…</>
+                    ) : (
+                      <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22 11 13 2 9l20-7z"/></svg> Send Quote for Approval</>
+                    )}
+                  </button>
+                  {!finalPrice || parseFloat(finalPrice) <= 0 ? (
+                    <p className="text-xs text-zinc-600 text-center">Enter a final price above to enable</p>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Awaiting approval status banner */}
+              {job.status === 'awaiting_approval' && (
+                <div className="pt-3 border-t border-zinc-800">
+                  <div className="bg-pink-900/20 border border-pink-800/40 rounded-lg p-3 space-y-1.5">
+                    <p className="text-xs font-semibold text-pink-300">⏳ Awaiting customer approval</p>
+                    <p className="text-xs text-zinc-400">Quote for <span className="text-fg font-medium">£{job.approval_price?.toFixed(2)}</span> sent{job.approval_sent_at ? ` on ${new Date(job.approval_sent_at).toLocaleDateString('en-GB')}` : ''}.</p>
+                    {job.stripe_payment_link && (
+                      <a href={job.stripe_payment_link} target="_blank" rel="noopener noreferrer" className="text-xs text-pink-400 underline">View payment link →</a>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Awaiting repair banner */}
+              {job.status === 'awaiting_repair' && (
+                <div className="pt-3 border-t border-zinc-800">
+                  <div className="bg-cyan-900/20 border border-cyan-800/40 rounded-lg p-3">
+                    <p className="text-xs font-semibold text-cyan-300">✓ Payment received — ready to repair</p>
+                    <p className="text-xs text-zinc-400 mt-1">Customer has paid. Move to <strong>In Progress</strong> when you start the repair.</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="pt-2 border-t border-border text-xs text-muted space-y-1">

@@ -28,6 +28,7 @@
     "react-signature-canvas": "^1.0.6",
     "recharts": "^3.8.1",
     "resend": "^3.5.0",
+    "stripe": "^22.2.0",
     "tailwind-merge": "^2.5.2",
     "twilio": "^5.3.7",
     "web-push": "^3.6.7",

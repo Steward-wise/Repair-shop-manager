@@ -1,6 +1,8 @@
 export type JobStatus =
   | 'intake'
   | 'diagnosed'
+  | 'awaiting_approval'
+  | 'awaiting_repair'
   | 'in_progress'
   | 'waiting_parts'
   | 'ready'
@@ -61,6 +63,10 @@ export interface Job {
   checklist: ChecklistItem[]
   warranty_days: number | null
   warranty_expires_at: string | null
+  approval_sent_at: string | null
+  approval_price: number | null
+  stripe_checkout_session_id: string | null
+  stripe_payment_link: string | null
   photos?: JobPhoto[]
   signature?: Signature | null
   parts?: JobPart[]
@@ -135,6 +141,8 @@ export interface JobTimeLog {
 export const JOB_STATUS_LABELS: Record<JobStatus, string> = {
   intake: 'Intake',
   diagnosed: 'Diagnosed',
+  awaiting_approval: 'Awaiting Approval',
+  awaiting_repair: 'Awaiting Repair',
   in_progress: 'In Progress',
   waiting_parts: 'Waiting Parts',
   ready: 'Ready',
@@ -144,6 +152,8 @@ export const JOB_STATUS_LABELS: Record<JobStatus, string> = {
 export const JOB_STATUS_COLORS: Record<JobStatus, string> = {
   intake: 'bg-blue-900/40 text-blue-300 border-blue-700',
   diagnosed: 'bg-purple-900/40 text-purple-300 border-purple-700',
+  awaiting_approval: 'bg-pink-900/40 text-pink-300 border-pink-700',
+  awaiting_repair: 'bg-cyan-900/40 text-cyan-300 border-cyan-700',
   in_progress: 'bg-yellow-900/40 text-yellow-300 border-yellow-700',
   waiting_parts: 'bg-orange-900/40 text-orange-300 border-orange-700',
   ready: 'bg-green-900/40 text-green-300 border-green-700',
