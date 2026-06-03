@@ -19,23 +19,27 @@ import { JOB_STATUS_LABELS } from '@/types'
 import { formatCurrency, formatTicketNumber } from '@/lib/utils'
 import JobStatusBadge from './job-status-badge'
 
-const COLUMNS: JobStatus[] = ['intake', 'diagnosed', 'in_progress', 'waiting_parts', 'ready', 'collected']
+const COLUMNS: JobStatus[] = ['intake', 'diagnosed', 'awaiting_approval', 'awaiting_repair', 'in_progress', 'waiting_parts', 'ready', 'collected']
 
 const COLUMN_COLORS: Record<JobStatus, string> = {
-  intake:        'border-blue-500/40 bg-blue-500/5',
-  diagnosed:     'border-purple-500/40 bg-purple-500/5',
-  in_progress:   'border-yellow-500/40 bg-yellow-500/5',
-  waiting_parts: 'border-orange-500/40 bg-orange-500/5',
-  ready:         'border-green-500/40 bg-green-500/5',
-  collected:     'border-zinc-600/40 bg-zinc-600/5',
+  intake:             'border-blue-500/40 bg-blue-500/5',
+  diagnosed:          'border-purple-500/40 bg-purple-500/5',
+  awaiting_approval:  'border-pink-500/40 bg-pink-500/5',
+  awaiting_repair:    'border-cyan-500/40 bg-cyan-500/5',
+  in_progress:        'border-yellow-500/40 bg-yellow-500/5',
+  waiting_parts:      'border-orange-500/40 bg-orange-500/5',
+  ready:              'border-green-500/40 bg-green-500/5',
+  collected:          'border-zinc-600/40 bg-zinc-600/5',
 }
 const COLUMN_HEADER: Record<JobStatus, string> = {
-  intake:        'text-blue-400',
-  diagnosed:     'text-purple-400',
-  in_progress:   'text-yellow-400',
-  waiting_parts: 'text-orange-400',
-  ready:         'text-green-400',
-  collected:     'text-zinc-400',
+  intake:             'text-blue-400',
+  diagnosed:          'text-purple-400',
+  awaiting_approval:  'text-pink-400',
+  awaiting_repair:    'text-cyan-400',
+  in_progress:        'text-yellow-400',
+  waiting_parts:      'text-orange-400',
+  ready:              'text-green-400',
+  collected:          'text-zinc-400',
 }
 
 function JobCard({ job, isDragging = false }: { job: Job; isDragging?: boolean }) {
@@ -133,7 +137,8 @@ export default function JobKanban({ initialJobs }: { initialJobs: Job[] }) {
 
   const jobsByStatus = useCallback(() => {
     const map: Record<JobStatus, Job[]> = {
-      intake: [], diagnosed: [], in_progress: [], waiting_parts: [], ready: [], collected: []
+      intake: [], diagnosed: [], awaiting_approval: [], awaiting_repair: [],
+      in_progress: [], waiting_parts: [], ready: [], collected: []
     }
     for (const job of jobs) {
       if (map[job.status]) map[job.status].push(job)
