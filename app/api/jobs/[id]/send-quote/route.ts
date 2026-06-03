@@ -24,7 +24,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   if (!stripeKey) return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 })
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.404fixed.co.uk'
-  const shopName = process.env.NEXT_PUBLIC_APP_NAME ?? '404 Fixed'
+  const shopName = process.env.NEXT_PUBLIC_APP_NAME ?? ''
 
   const stripe = new Stripe(stripeKey)
 
