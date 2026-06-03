@@ -340,3 +340,61 @@ export async function sendAppointmentConfirmation(
     return true
   } catch { return false }
 }
+
+
+export async function sendNewQuoteAlert(quote: {
+  id: string
+  first_name: string
+  last_name: string
+  email: string
+  phone?: string | null
+  device_type?: string | null
+  device_make_model?: string | null
+  problem_description: string
+  suggested_price?: number | null
+}): Promise<boolean> {
+  const to = process.env.REORDER_ALERT_EMAIL ?? process.env.RESEND_FROM_EMAIL
+  if (!process.env.RESEND_API_KEY || !to) return false
+
+  const quoteUrl = `${appUrl()}/quotes/${quote.id}`
+  const name = `${quote.first_name} ${quote.last_name}`
+  const device = [quote.device_make_model, quote.device_type].filter(Boolean).join(' — ') || 'Not specified'
+
+  const body = `
+    <p style="margin:0 0 16px;font-size:16px;color:#fafafa;font-weight:600;">New quote request received</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#27272a;border-radius:8px;padding:20px;margin-bottom:24px;">
+      <tr><td style="padding:8px 0;"><span style="color:#a1a1aa;font-size:14px;">Customer</span><span style="float:right;color:#fafafa;font-weight:600;">${name}</span></td></tr>
+      <tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Email</span><span style="float:right;color:#dc2626;">${quote.email}</span></td></tr>
+      ${quote.phone ? `<tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Phone</span><span style="float:right;color:#fafafa;">${quote.phone}</span></td></tr>` : ''}
+      <tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Device</span><span style="float:right;color:#fafafa;">${device}</span></td></tr>
+      ${quote.suggested_price != null ? `<tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Suggested Price</span><span style="float:right;color:#22c55e;font-weight:600;">£${quote.suggested_price}</span></td></tr>` : ''}
+    </table>
+    <div style="background:#1a1a1a;border-left:3px solid #dc2626;border-radius:4px;padding:16px;margin-bottom:24px;">
+      <p style="margin:0;color:#a1a1aa;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">Problem Description</p>
+      <p style="margin:0;color:#fafafa;font-size:14px;line-height:1.6;">${quote.problem_description}</p>
+    </div>
+    <a href="${quoteUrl}" style="display:inline-block;background:#dc2626;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">View & Respond to Quote →</a>`
+
+  const text = [
+    `New quote request from ${name}`,
+    `Email: ${quote.email}`,
+    quote.phone ? `Phone: ${quote.phone}` : '',
+    `Device: ${device}`,
+    `Problem: ${quote.problem_description}`,
+    quote.suggested_price != null ? `Suggested price: £${quote.suggested_price}` : '',
+    '',
+    `View in dashboard: ${quoteUrl}`,
+  ].filter(Boolean).join('\n')
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM,
+      to,
+      subject: `New Quote Request — ${name} (${device})`,
+      html: emailShell('New Quote Request', body),
+      text,
+    })
+    if (error) { console.error('Quote alert error:', error); return false }
+    return true
+  } catch { return false }
+}

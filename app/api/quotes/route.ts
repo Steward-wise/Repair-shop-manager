@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { sendNewQuoteAlert } from '@/lib/resend'
 
 export async function GET(request: NextRequest) {
   const supabase = createAdminClient()
@@ -38,6 +39,10 @@ export async function POST(request: NextRequest) {
     }).select().single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Notify shop owner by email
+    sendNewQuoteAlert(data).catch(console.error)
+
     return NextResponse.json({ quote: data }, { status: 201 })
   } catch {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
