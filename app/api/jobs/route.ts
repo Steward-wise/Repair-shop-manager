@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { sendIntakeConfirmation } from '@/lib/resend'
+import { formatTicketNumber } from '@/lib/utils'
 
 export async function GET(request: NextRequest) {
   const supabase = createAdminClient()
@@ -126,6 +128,30 @@ export async function POST(request: NextRequest) {
 
       if (warrantyJobs && warrantyJobs.length > 0) {
         warranty_warning = `This customer had a recent repair on this device that may still be under warranty (expires ${new Date(warrantyJobs[0].warranty_expires_at).toLocaleDateString('en-GB')}).`
+      }
+    }
+
+    // Send intake confirmation email if customer has an email
+    if (customer_id) {
+      const { data: customer } = await supabase
+        .from('customers')
+        .select('id, name, email')
+        .eq('id', customer_id)
+        .single()
+
+      if (customer?.email) {
+        sendIntakeConfirmation({
+          to: customer.email,
+          customerId: customer.id,
+          customerName: customer.name,
+          ticketNumber: formatTicketNumber(job.ticket_number),
+          deviceInfo: `${device_make} ${device_model}`,
+          reportedFault: reported_fault,
+          intakeMethod: intake_method || 'drop_off',
+          intakeDate: intake_date || null,
+          quotedPrice: quoted_price ?? null,
+          intakeSignatureUrl: intake_signature_url || null,
+        }).catch(() => null)
       }
     }
 

@@ -379,6 +379,94 @@ export async function sendNewQuoteAlert(quote: {
   } catch { return false }
 }
 
+export async function sendIntakeConfirmation({
+  to,
+  customerId,
+  customerName,
+  ticketNumber,
+  deviceInfo,
+  reportedFault,
+  intakeMethod,
+  intakeDate,
+  quotedPrice,
+  intakeSignatureUrl,
+}: {
+  to: string
+  customerId: string
+  customerName: string
+  ticketNumber: string
+  deviceInfo: string
+  reportedFault: string
+  intakeMethod: 'drop_off' | 'collection'
+  intakeDate: string | null
+  quotedPrice: number | null
+  intakeSignatureUrl: string | null
+}): Promise<boolean> {
+  if (!process.env.RESEND_API_KEY) return false
+
+  const methodLabel = intakeMethod === 'collection' ? 'Collected by us' : 'Dropped off in store'
+  const dateLabel = intakeDate
+    ? new Date(intakeDate + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    : new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+
+  const signatureHtml = intakeSignatureUrl
+    ? `<tr><td style="padding:12px 0;border-top:1px solid #3f3f46;" colspan="2">
+        <p style="margin:0 0 8px;color:#a1a1aa;font-size:13px;">Customer signature</p>
+        <img src="${intakeSignatureUrl}" alt="Customer signature" style="max-height:60px;background:white;padding:4px;border-radius:4px;" />
+      </td></tr>`
+    : ''
+
+  const body = `
+    <p style="margin:0 0 16px;font-size:16px;color:#a1a1aa;">Hi ${customerName},</p>
+    <p style="margin:0 0 24px;font-size:16px;color:#fafafa;line-height:1.6;">
+      Thank you for choosing <strong>${SHOP_NAME}</strong>. We have received your device and your repair ticket is now open.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#27272a;border-radius:8px;padding:20px;margin-bottom:24px;">
+      <tr><td style="padding:8px 0;"><span style="color:#a1a1aa;font-size:14px;">Ticket</span><span style="float:right;color:#fafafa;font-family:monospace;font-weight:600;">${ticketNumber}</span></td></tr>
+      <tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Device</span><span style="float:right;color:#fafafa;">${deviceInfo}</span></td></tr>
+      <tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Reported fault</span><span style="float:right;color:#fafafa;text-align:right;max-width:60%;">${reportedFault}</span></td></tr>
+      <tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Received via</span><span style="float:right;color:#fafafa;">${methodLabel}</span></td></tr>
+      <tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Date</span><span style="float:right;color:#fafafa;">${dateLabel}</span></td></tr>
+      ${quotedPrice != null ? `<tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Estimated cost</span><span style="float:right;color:#fafafa;font-weight:600;">£${quotedPrice.toFixed(2)}</span></td></tr>` : ''}
+      ${signatureHtml}
+    </table>
+    <p style="margin:0 0 8px;color:#a1a1aa;font-size:14px;line-height:1.6;">
+      We will be in touch as soon as your repair is complete. Please keep your ticket number safe as you may need it to collect your device.
+    </p>
+    ${SHOP_PHONE ? `<p style="margin:0;color:#a1a1aa;font-size:14px;">Questions? Call us on <a href="tel:${SHOP_PHONE}" style="color:#dc2626;">${SHOP_PHONE}</a></p>` : ''}`
+
+  const text = [
+    `Hi ${customerName},`,
+    '',
+    `Thank you for choosing ${SHOP_NAME}. We have received your device and your repair ticket is now open.`,
+    '',
+    `Ticket: ${ticketNumber}`,
+    `Device: ${deviceInfo}`,
+    `Reported fault: ${reportedFault}`,
+    `Received via: ${methodLabel}`,
+    `Date: ${dateLabel}`,
+    quotedPrice != null ? `Estimated cost: £${quotedPrice.toFixed(2)}` : '',
+    '',
+    'We will be in touch as soon as your repair is complete.',
+    SHOP_PHONE ? `Questions? Call us on ${SHOP_PHONE}` : '',
+  ].filter(Boolean).join('\n').trim()
+
+  const unsubUrl = unsubscribeUrl(customerId)
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM,
+      to,
+      subject: `Device received — Ticket ${ticketNumber} · ${SHOP_NAME}`,
+      html: emailShell('Device Received', body, unsubUrl),
+      text,
+      headers: listUnsubscribeHeaders(customerId),
+    })
+    if (error) { console.error('Intake confirmation email error:', error); return false }
+    return true
+  } catch { return false }
+}
+
 export async function sendJobQuoteApproval({
   to, customerName, deviceInfo, fault, price, paymentUrl, ticketNumber, shopName,
 }: {

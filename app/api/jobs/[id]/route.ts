@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { sendIntakeConfirmation } from '@/lib/resend'
+import { formatTicketNumber } from '@/lib/utils'
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -104,6 +106,25 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .single()
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // Send intake confirmation email when intake signature is saved after-the-fact
+    if (allowedFields.intake_signature_url && data) {
+      const customer = data.customer as { id: string; name: string; email: string | null } | null
+      if (customer?.email) {
+        sendIntakeConfirmation({
+          to: customer.email,
+          customerId: customer.id,
+          customerName: customer.name,
+          ticketNumber: formatTicketNumber(data.ticket_number),
+          deviceInfo: `${data.device_make} ${data.device_model}`,
+          reportedFault: data.reported_fault,
+          intakeMethod: data.intake_method ?? 'drop_off',
+          intakeDate: data.intake_date ?? null,
+          quotedPrice: data.quoted_price ?? null,
+          intakeSignatureUrl: allowedFields.intake_signature_url as string,
+        }).catch(() => null)
+      }
+    }
 
     // Fire push notification in background when status changes
     if (allowedFields.status && data) {
