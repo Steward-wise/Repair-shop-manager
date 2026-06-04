@@ -54,6 +54,11 @@ export default function NewJobPage() {
   const [selectedTemplate, setSelectedTemplate] = useState('')
   const [warrantyWarning, setWarrantyWarning] = useState<string | null>(null)
 
+  // Intake details
+  const [intakeMethod, setIntakeMethod] = useState<'drop_off' | 'collection'>('drop_off')
+  const [intakeDate, setIntakeDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [alternateContact, setAlternateContact] = useState('')
+
   // Communications consent
   const [marketingConsent, setMarketingConsent] = useState(false)
 
@@ -132,6 +137,9 @@ export default function NewJobPage() {
           notes: notes.trim() || null,
           photo_urls: [intakePhotoUrl, damagePhotoUrl].filter(Boolean),
           warranty_days: parseInt(warrantyDays) || 90,
+          intake_method: intakeMethod,
+          intake_date: intakeDate || null,
+          alternate_contact: alternateContact.trim() || null,
         }),
       })
 
@@ -269,6 +277,56 @@ export default function NewJobPage() {
                 </button>
               </div>
             )}
+
+            {/* Intake method */}
+            <div className="space-y-3 pt-2 border-t border-border">
+              <div>
+                <label className="label">How was the device received? *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['drop_off', 'collection'] as const).map((method) => (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() => setIntakeMethod(method)}
+                      className={`flex items-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium transition-colors ${
+                        intakeMethod === method
+                          ? 'border-primary bg-primary-muted text-primary'
+                          : 'border-border bg-surface-2 text-muted hover:text-fg'
+                      }`}
+                    >
+                      {method === 'drop_off' ? (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="M16.5 9.4 7.55 4.24"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/><circle cx="18.5" cy="15.5" r="2.5"/><path d="M20.27 17.27 22 19"/></svg>
+                      ) : (
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v3"/><rect x="9" y="11" width="14" height="10" rx="1"/><path d="M9 15h14"/></svg>
+                      )}
+                      {method === 'drop_off' ? 'Customer Drop-off' : 'We Collected'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="label">{intakeMethod === 'drop_off' ? 'Drop-off date' : 'Collection date'}</label>
+                <input
+                  type="date"
+                  className="input"
+                  value={intakeDate}
+                  onChange={(e) => setIntakeDate(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="label">Alternate contact method</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="e.g. WhatsApp: 07700 000000, or email@example.com"
+                  value={alternateContact}
+                  onChange={(e) => setAlternateContact(e.target.value)}
+                />
+                <p className="text-xs text-muted mt-1">In addition to their phone number on file</p>
+              </div>
+            </div>
 
             <div className="pt-2 flex gap-3">
               <button
@@ -454,6 +512,22 @@ export default function NewJobPage() {
                 <div className="flex justify-between">
                   <span className="text-muted">Customer</span>
                   <span className="text-fg font-medium">{selectedCustomer?.name ?? newCustomerName}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-muted">Received via</span>
+                <span className="text-fg font-medium">{intakeMethod === 'drop_off' ? 'Customer Drop-off' : 'We Collected'}</span>
+              </div>
+              {intakeDate && (
+                <div className="flex justify-between">
+                  <span className="text-muted">{intakeMethod === 'drop_off' ? 'Drop-off date' : 'Collection date'}</span>
+                  <span className="text-fg">{new Date(intakeDate + 'T00:00:00').toLocaleDateString('en-GB')}</span>
+                </div>
+              )}
+              {alternateContact && (
+                <div className="flex justify-between">
+                  <span className="text-muted">Alt. contact</span>
+                  <span className="text-fg text-right max-w-[60%]">{alternateContact}</span>
                 </div>
               )}
               <div className="flex justify-between">

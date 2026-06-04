@@ -62,6 +62,9 @@ export async function POST(request: NextRequest) {
       photo_urls = [],
       warranty_days,
       checklist,
+      intake_method,
+      intake_date,
+      alternate_contact,
     } = body
 
     if (!device_make || !device_model || !reported_fault) {
@@ -86,6 +89,9 @@ export async function POST(request: NextRequest) {
         status: 'intake',
         warranty_days: warranty_days ?? 90,
         checklist: checklist ?? [],
+        intake_method: intake_method || 'drop_off',
+        intake_date: intake_date || null,
+        alternate_contact: alternate_contact || null,
       })
       .select()
       .single()
