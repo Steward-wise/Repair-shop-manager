@@ -67,6 +67,10 @@ export interface Job {
   approval_price: number | null
   stripe_checkout_session_id: string | null
   stripe_payment_link: string | null
+  intake_method: 'drop_off' | 'collection' | null
+  intake_date: string | null
+  alternate_contact: string | null
+  intake_signature_url: string | null
   photos?: JobPhoto[]
   signature?: Signature | null
   parts?: JobPart[]

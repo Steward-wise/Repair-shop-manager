@@ -51,6 +51,10 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const [signCollectorName, setSignCollectorName] = useState('')
   const [signingCollection, setSigningCollection] = useState(false)
 
+  // Sign intake modal
+  const [showIntakeSignModal, setShowIntakeSignModal] = useState(false)
+  const [signingIntake, setSigningIntake] = useState(false)
+
   useEffect(() => {
     loadJob()
     loadInventory()
@@ -243,6 +247,36 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     setSendingApproval(false)
   }
 
+  async function handleSignIntake(dataUrl: string) {
+    setSigningIntake(true)
+    try {
+      const blob = await (await fetch(dataUrl)).blob()
+      const formData = new FormData()
+      formData.append('file', blob, 'intake-signature.png')
+      formData.append('jobId', id)
+      formData.append('photoType', 'signature')
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+      const uploadData = await uploadRes.json()
+      if (!uploadRes.ok) throw new Error(uploadData.error ?? 'Upload failed')
+
+      const res = await fetch(`/api/jobs/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ intake_signature_url: uploadData.url }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to save signature')
+
+      setJob(data.job)
+      setShowIntakeSignModal(false)
+      toast.success('Intake signature saved!')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Something went wrong')
+    } finally {
+      setSigningIntake(false)
+    }
+  }
+
   async function handleSignCollection(dataUrl: string) {
     setSigningCollection(true)
     try {
@@ -377,6 +411,17 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               </svg>
               Print Job Sheet
             </button>
+            {!job.intake_signature_url && (
+              <button
+                onClick={() => setShowIntakeSignModal(true)}
+                className="btn-secondary text-sm flex items-center gap-2"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>
+                </svg>
+                Sign Intake
+              </button>
+            )}
             {job.status !== 'collected' && (
               <button
                 onClick={() => setShowSignModal(true)}
@@ -897,6 +942,34 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
           </div>
         </div>
       </div>
+
+      {/* Sign Intake Modal */}
+      {showIntakeSignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-md space-y-5 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-fg">Sign for Intake</h2>
+                <p className="text-xs text-muted mt-0.5">Customer confirms they have handed over the device</p>
+              </div>
+              <button
+                onClick={() => setShowIntakeSignModal(false)}
+                className="text-muted hover:text-fg p-1"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            <SignaturePad onSave={handleSignIntake} disabled={signingIntake} />
+
+            {signingIntake && (
+              <p className="text-center text-muted text-sm">Saving signature…</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Sign Collection Modal */}
       {showSignModal && (
