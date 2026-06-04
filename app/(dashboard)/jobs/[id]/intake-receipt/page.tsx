@@ -11,6 +11,7 @@ interface IntakeJob {
   intake_method: 'drop_off' | 'collection' | null
   intake_date: string | null
   alternate_contact: string | null
+  intake_signature_url: string | null
   device_type: string
   device_make: string
   device_model: string
@@ -160,18 +161,19 @@ export default function IntakeReceiptPage() {
         {/* Signatures */}
         <div className="signature-box grid grid-cols-2 gap-6 mb-5">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-8">Customer signature</p>
-            <div className="border-b border-black" />
-            <p className="text-xs text-gray-500 mt-1">
-              {job.customer?.name ?? 'Customer'}
-            </p>
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Customer signature</p>
+            {job.intake_signature_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={job.intake_signature_url} alt="Customer signature" className="h-16 w-full object-contain object-left border-b border-black pb-1" />
+            ) : (
+              <div className="h-16 border-b border-black" />
+            )}
+            <p className="text-xs text-gray-500 mt-1">{job.customer?.name ?? 'Customer'}</p>
           </div>
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-8">Staff signature</p>
-            <div className="border-b border-black" />
-            <p className="text-xs text-gray-500 mt-1">
-              {job.technician_name ?? 'Staff member'}
-            </p>
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1">Staff signature</p>
+            <div className="h-16 border-b border-black" />
+            <p className="text-xs text-gray-500 mt-1">{job.technician_name ?? 'Staff member'}</p>
           </div>
         </div>
 

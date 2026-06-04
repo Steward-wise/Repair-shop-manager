@@ -6,6 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import toast, { Toaster } from 'react-hot-toast'
 import JobStatusBadge from '@/components/job-status-badge'
+import SignaturePad from '@/components/signature-pad'
 import { formatTicketNumber, formatDateTime, formatCurrency, generateCollectionLink } from '@/lib/utils'
 import {
   JOB_STATUS_LABELS, DEVICE_TYPE_LABELS,
@@ -44,6 +45,11 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const [sendingRating, setSendingRating] = useState(false)
   const [sendingApproval, setSendingApproval] = useState(false)
   const [checklist, setChecklist] = useState<{ label: string; checked: boolean }[]>([])
+
+  // Sign collection modal
+  const [showSignModal, setShowSignModal] = useState(false)
+  const [signCollectorName, setSignCollectorName] = useState('')
+  const [signingCollection, setSigningCollection] = useState(false)
 
   useEffect(() => {
     loadJob()
@@ -237,6 +243,41 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     setSendingApproval(false)
   }
 
+  async function handleSignCollection(dataUrl: string) {
+    setSigningCollection(true)
+    try {
+      const blob = await (await fetch(dataUrl)).blob()
+      const formData = new FormData()
+      formData.append('file', blob, 'collection-signature.png')
+      formData.append('jobId', id)
+      formData.append('photoType', 'signature')
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+      const uploadData = await uploadRes.json()
+      if (!uploadRes.ok) throw new Error(uploadData.error ?? 'Upload failed')
+
+      const res = await fetch(`/api/jobs/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'collected',
+          signature_url: uploadData.url,
+          collector_name: signCollectorName.trim() || 'Customer',
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to record collection')
+
+      setJob(data.job)
+      setShowSignModal(false)
+      setSignCollectorName('')
+      toast.success('Collection signed and recorded!')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Something went wrong')
+    } finally {
+      setSigningCollection(false)
+    }
+  }
+
   async function sendRatingRequest() {
     setSendingRating(true)
     const res = await fetch(`/api/jobs/${id}/send-rating`, { method: 'POST' })
@@ -336,6 +377,17 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               </svg>
               Print Job Sheet
             </button>
+            {job.status !== 'collected' && (
+              <button
+                onClick={() => setShowSignModal(true)}
+                className="btn-secondary text-sm flex items-center gap-2"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>
+                </svg>
+                Sign Collection
+              </button>
+            )}
             <button
               onClick={() => window.open(`/jobs/${id}/intake-receipt`, '_blank')}
               className="btn-secondary text-sm flex items-center gap-2"
@@ -845,6 +897,46 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
           </div>
         </div>
       </div>
+
+      {/* Sign Collection Modal */}
+      {showSignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-md space-y-5 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-fg">Sign for Collection</h2>
+                <p className="text-xs text-muted mt-0.5">Customer signs to confirm they are collecting this device</p>
+              </div>
+              <button
+                onClick={() => { setShowSignModal(false); setSignCollectorName('') }}
+                className="text-muted hover:text-fg p-1"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            <div>
+              <label className="label">Collector name</label>
+              <input
+                type="text"
+                className="input"
+                placeholder="Full name of person collecting"
+                value={signCollectorName}
+                onChange={(e) => setSignCollectorName(e.target.value)}
+                autoComplete="name"
+              />
+            </div>
+
+            <SignaturePad onSave={handleSignCollection} disabled={signingCollection} />
+
+            {signingCollection && (
+              <p className="text-center text-muted text-sm">Recording collection…</p>
+            )}
+          </div>
+        </div>
+      )}
     </>
   )
 }

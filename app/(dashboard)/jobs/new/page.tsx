@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import PhotoUpload from '@/components/photo-upload'
+import SignaturePad from '@/components/signature-pad'
 import toast, { Toaster } from 'react-hot-toast'
 import { DEVICE_TYPE_LABELS, type DeviceType } from '@/types'
 import type { Customer } from '@/types'
@@ -66,6 +67,10 @@ export default function NewJobPage() {
   const [intakePhotoUrl, setIntakePhotoUrl] = useState<string | null>(null)
   const [damagePhotoUrl, setDamagePhotoUrl] = useState<string | null>(null)
 
+  // Intake signature
+  const [intakeSignatureDataUrl, setIntakeSignatureDataUrl] = useState<string | null>(null)
+  const [signatureCaptured, setSignatureCaptured] = useState(false)
+
   useEffect(() => {
     fetch('/api/templates').then((r) => r.json()).then((d) => setTemplates(d.templates ?? []))
   }, [])
@@ -97,6 +102,21 @@ export default function NewJobPage() {
     setIsNewCustomer(false)
   }
 
+  async function uploadSignature(dataUrl: string): Promise<string | null> {
+    try {
+      const blob = await (await fetch(dataUrl)).blob()
+      const formData = new FormData()
+      formData.append('file', blob, 'intake-signature.png')
+      formData.append('photoType', 'signature')
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Upload failed')
+      return data.url as string
+    } catch {
+      return null
+    }
+  }
+
   async function handleSubmit() {
     setLoading(true)
     try {
@@ -117,6 +137,12 @@ export default function NewJobPage() {
         const data = await res.json()
         if (!res.ok) throw new Error(data.error ?? 'Failed to create customer')
         customerId = data.customer.id
+      }
+
+      // Upload intake signature if captured
+      let intakeSignatureUrl: string | null = null
+      if (intakeSignatureDataUrl) {
+        intakeSignatureUrl = await uploadSignature(intakeSignatureDataUrl)
       }
 
       // Create job
@@ -140,6 +166,7 @@ export default function NewJobPage() {
           intake_method: intakeMethod,
           intake_date: intakeDate || null,
           alternate_contact: alternateContact.trim() || null,
+          intake_signature_url: intakeSignatureUrl,
         }),
       })
 
@@ -503,6 +530,37 @@ export default function NewJobPage() {
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
+            </div>
+
+            {/* Optional intake signature */}
+            <div className="border-t border-border pt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-fg">Customer signature <span className="text-muted font-normal">(optional)</span></p>
+                  <p className="text-xs text-muted">Customer signs to confirm they have handed over the device</p>
+                </div>
+                {signatureCaptured && (
+                  <button
+                    type="button"
+                    onClick={() => { setSignatureCaptured(false); setIntakeSignatureDataUrl(null) }}
+                    className="text-xs text-muted hover:text-fg"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+
+              {signatureCaptured && intakeSignatureDataUrl ? (
+                <div className="border border-green-700/40 rounded-xl overflow-hidden bg-green-900/10 p-3 flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={intakeSignatureDataUrl} alt="Signature preview" className="h-12 bg-white rounded p-1" />
+                  <p className="text-sm text-green-400 font-medium">Signature captured</p>
+                </div>
+              ) : (
+                <SignaturePad
+                  onSave={(dataUrl) => { setIntakeSignatureDataUrl(dataUrl); setSignatureCaptured(true) }}
+                />
+              )}
             </div>
 
             {/* Summary */}

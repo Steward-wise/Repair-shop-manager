@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
       intake_method,
       intake_date,
       alternate_contact,
+      intake_signature_url,
     } = body
 
     if (!device_make || !device_model || !reported_fault) {
@@ -92,6 +93,7 @@ export async function POST(request: NextRequest) {
         intake_method: intake_method || 'drop_off',
         intake_date: intake_date || null,
         alternate_contact: alternate_contact || null,
+        intake_signature_url: intake_signature_url || null,
       })
       .select()
       .single()
