@@ -8,7 +8,7 @@ import JobStatusBadge from '@/components/job-status-badge'
 import { formatTicketNumber, formatDateTime, formatCurrency } from '@/lib/utils'
 import { JOB_STATUS_LABELS, type Job, type JobStatus } from '@/types'
 
-const STATUSES: JobStatus[] = ['intake', 'diagnosed', 'in_progress', 'waiting_parts', 'ready', 'collected']
+const STATUSES: JobStatus[] = ['intake', 'diagnosed', 'awaiting_approval', 'awaiting_repair', 'waiting_parts', 'in_progress', 'ready', 'collected']
 
 interface Props {
   jobs: Job[]

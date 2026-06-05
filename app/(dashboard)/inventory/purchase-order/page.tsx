@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import toast, { Toaster } from 'react-hot-toast'
 import { formatCurrency } from '@/lib/utils'
@@ -17,11 +17,29 @@ interface SupplierGroup {
   items: POItem[]
 }
 
+interface SavedPO {
+  id: string
+  po_ref: string
+  supplier: string
+  supplier_email: string | null
+  items: { part_name: string; sku: string | null; quantity_to_order: number; cost_price: number | null }[]
+  status: 'sent' | 'partially_received' | 'received' | 'cancelled'
+  sent_at: string
+  received_at: string | null
+  notes: string | null
+}
+
+type Tab = 'new' | 'history'
+
 export default function PurchaseOrderPage() {
   const router = useRouter()
+  const [tab, setTab] = useState<Tab>('new')
   const [items, setItems] = useState<POItem[]>([])
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState<string | null>(null)
+  const [savedPOs, setSavedPOs] = useState<SavedPO[]>([])
+  const [loadingPOs, setLoadingPOs] = useState(false)
+  const [receiving, setReceiving] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/inventory')
@@ -38,6 +56,18 @@ export default function PurchaseOrderPage() {
         setLoading(false)
       })
   }, [])
+
+  const loadPOs = useCallback(async () => {
+    setLoadingPOs(true)
+    const res = await fetch('/api/inventory/purchase-order')
+    const data = await res.json()
+    setSavedPOs(data.orders ?? [])
+    setLoadingPOs(false)
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'history') loadPOs()
+  }, [tab, loadPOs])
 
   function setQty(id: string, qty: number) {
     setItems((prev) => prev.map((i) => i.id === id ? { ...i, quantity_to_order: Math.max(1, qty) } : i))
@@ -64,6 +94,7 @@ export default function PurchaseOrderPage() {
         supplier,
         supplierEmail: email,
         items: group.map((i) => ({
+          inventory_id: i.id,
           part_name: i.part_name,
           sku: i.sku,
           quantity_to_order: i.quantity_to_order,
@@ -73,8 +104,29 @@ export default function PurchaseOrderPage() {
     })
     const data = await res.json()
     if (!res.ok) toast.error(data.error ?? 'Failed to send PO')
-    else toast.success(`PO ${data.poRef} sent to ${email}`)
+    else {
+      toast.success(`PO ${data.poRef} sent to ${email}`)
+      if (tab === 'history') loadPOs()
+    }
     setSending(null)
+  }
+
+  async function markReceived(po: SavedPO) {
+    if (!confirm(`Mark ${po.po_ref} as received? This will add the ordered quantities back to your stock.`)) return
+    setReceiving(po.id)
+    const res = await fetch(`/api/inventory/purchase-order/${po.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'received' }),
+    })
+    const data = await res.json()
+    if (!res.ok) toast.error(data.error ?? 'Failed to mark received')
+    else {
+      toast.success(`${po.po_ref} marked as received — ${data.stock_updated} item(s) restocked`)
+      loadPOs()
+      router.refresh()
+    }
+    setReceiving(null)
   }
 
   function printPO(supplier: string) {
@@ -89,22 +141,31 @@ export default function PurchaseOrderPage() {
     if (w) { w.document.write(html); w.document.close(); w.print() }
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
+  const STATUS_COLORS: Record<SavedPO['status'], string> = {
+    sent: 'bg-yellow-900/40 text-yellow-300 border-yellow-700',
+    partially_received: 'bg-blue-900/40 text-blue-300 border-blue-700',
+    received: 'bg-green-900/40 text-green-300 border-green-700',
+    cancelled: 'bg-zinc-800 text-zinc-400 border-zinc-600',
+  }
+  const STATUS_LABELS: Record<SavedPO['status'], string> = {
+    sent: 'Sent',
+    partially_received: 'Partial',
+    received: 'Received',
+    cancelled: 'Cancelled',
   }
 
-  // Group by supplier
+  if (loading) return (
+    <div className="flex items-center justify-center py-32">
+      <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+
   const suppliers: Record<string, InventoryItem[]> = {}
   for (const item of items) {
     const s = item.supplier ?? 'Unknown Supplier'
     if (!suppliers[s]) suppliers[s] = []
     suppliers[s].push(item)
   }
-
   const supplierGroups: SupplierGroup[] = Object.entries(suppliers).map(([name, groupItems]) => ({
     name,
     email: (groupItems[0] as POItem).supplier_email ?? '',
@@ -128,100 +189,171 @@ export default function PurchaseOrderPage() {
           </div>
         </div>
 
-        {items.length === 0 && (
-          <div className="card text-center py-12">
-            <p className="text-muted">All stock levels are OK — no items need reordering.</p>
-          </div>
+        {/* Tabs */}
+        <div className="flex gap-1 p-1 bg-surface-2 rounded-lg w-fit">
+          {(['new', 'history'] as Tab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${tab === t ? 'bg-surface text-fg shadow' : 'text-muted hover:text-fg'}`}
+            >
+              {t === 'new' ? `New Order${items.length > 0 ? ` (${items.length})` : ''}` : 'Order History'}
+            </button>
+          ))}
+        </div>
+
+        {/* NEW ORDER TAB */}
+        {tab === 'new' && (
+          <>
+            {items.length === 0 && (
+              <div className="card text-center py-12">
+                <p className="text-muted">All stock levels are OK — no items need reordering.</p>
+              </div>
+            )}
+
+            {supplierGroups.map((group) => (
+              <div key={group.name} className="card space-y-4">
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div>
+                    <h2 className="font-semibold text-fg">{group.name}</h2>
+                    <p className="text-xs text-muted">{group.items.filter((i) => i.selected).length} item{group.items.filter((i) => i.selected).length !== 1 ? 's' : ''} selected</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => printPO(group.name)} className="btn-secondary text-sm flex items-center gap-2">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                        <path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>
+                      </svg>
+                      Print PO
+                    </button>
+                    <button onClick={() => sendPO(group.name)} disabled={sending === group.name} className="btn-primary text-sm flex items-center gap-2">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>
+                      </svg>
+                      {sending === group.name ? 'Sending…' : 'Email & Save PO'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 items-center">
+                  <label className="text-xs text-muted whitespace-nowrap">Supplier email</label>
+                  <input type="email" className="input text-sm flex-1 max-w-xs" placeholder="supplier@example.com"
+                    value={group.email} onChange={(e) => setEmail(group.name, e.target.value)} />
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left text-muted font-medium py-2 pr-4 w-8" />
+                        <th className="text-left text-muted font-medium py-2 pr-4">Part</th>
+                        <th className="text-left text-muted font-medium py-2 pr-4 hidden sm:table-cell">SKU</th>
+                        <th className="text-center text-muted font-medium py-2 pr-4">In Stock</th>
+                        <th className="text-center text-muted font-medium py-2 pr-4">Order Qty</th>
+                        <th className="text-right text-muted font-medium py-2">Unit Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {group.items.map((item) => (
+                        <tr key={item.id} className={item.selected ? '' : 'opacity-40'}>
+                          <td className="py-2 pr-4">
+                            <input type="checkbox" checked={item.selected} onChange={() => toggleItem(item.id)} className="accent-primary cursor-pointer" />
+                          </td>
+                          <td className="py-2 pr-4 text-fg">{item.part_name}</td>
+                          <td className="py-2 pr-4 text-muted font-mono text-xs hidden sm:table-cell">{item.sku ?? '—'}</td>
+                          <td className="py-2 pr-4 text-center text-warning font-bold">{item.quantity}</td>
+                          <td className="py-2 pr-4 text-center">
+                            <input type="number" min="1" value={item.quantity_to_order}
+                              onChange={(e) => setQty(item.id, parseInt(e.target.value) || 1)}
+                              className="input w-16 text-sm text-center py-1" disabled={!item.selected} />
+                          </td>
+                          <td className="py-2 text-right text-muted">{formatCurrency(item.cost_price)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </>
         )}
 
-        {supplierGroups.map((group) => (
-          <div key={group.name} className="card space-y-4">
-            <div className="flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <h2 className="font-semibold text-fg">{group.name}</h2>
-                <p className="text-xs text-muted">{group.items.filter((i) => i.selected).length} item{group.items.filter((i) => i.selected).length !== 1 ? 's' : ''} selected</p>
+        {/* HISTORY TAB */}
+        {tab === 'history' && (
+          <div className="space-y-4">
+            {loadingPOs ? (
+              <div className="flex justify-center py-12">
+                <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => printPO(group.name)}
-                  className="btn-secondary text-sm flex items-center gap-2"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-                    <path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>
-                  </svg>
-                  Print PO
-                </button>
-                <button
-                  onClick={() => sendPO(group.name)}
-                  disabled={sending === group.name}
-                  className="btn-primary text-sm flex items-center gap-2"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>
-                  </svg>
-                  {sending === group.name ? 'Sending…' : 'Email PO'}
-                </button>
-              </div>
-            </div>
+            ) : savedPOs.length === 0 ? (
+              <div className="card text-center py-12 text-muted">No purchase orders sent yet.</div>
+            ) : (
+              savedPOs.map((po) => (
+                <div key={po.id} className="card space-y-3">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-fg">{po.po_ref}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${STATUS_COLORS[po.status]}`}>
+                          {STATUS_LABELS[po.status]}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted mt-0.5">
+                        {po.supplier} · Sent {new Date(po.sent_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {po.received_at ? ` · Received ${new Date(po.received_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : ''}
+                      </p>
+                    </div>
+                    {po.status === 'sent' && (
+                      <button
+                        onClick={() => markReceived(po)}
+                        disabled={receiving === po.id}
+                        className="btn-primary text-sm flex items-center gap-2"
+                      >
+                        {receiving === po.id ? (
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M20 6 9 17l-5-5"/>
+                          </svg>
+                        )}
+                        {receiving === po.id ? 'Updating stock…' : 'Mark Received'}
+                      </button>
+                    )}
+                    {po.status === 'received' && (
+                      <span className="text-xs text-green-400 flex items-center gap-1">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                        Stock updated
+                      </span>
+                    )}
+                  </div>
 
-            {/* Supplier email */}
-            <div className="flex gap-3 items-center">
-              <label className="text-xs text-muted whitespace-nowrap">Supplier email</label>
-              <input
-                type="email"
-                className="input text-sm flex-1 max-w-xs"
-                placeholder="supplier@example.com"
-                value={group.email}
-                onChange={(e) => setEmail(group.name, e.target.value)}
-              />
-            </div>
-
-            {/* Items table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left text-muted font-medium py-2 pr-4 w-8" />
-                    <th className="text-left text-muted font-medium py-2 pr-4">Part</th>
-                    <th className="text-left text-muted font-medium py-2 pr-4 hidden sm:table-cell">SKU</th>
-                    <th className="text-center text-muted font-medium py-2 pr-4">In Stock</th>
-                    <th className="text-center text-muted font-medium py-2 pr-4">Order Qty</th>
-                    <th className="text-right text-muted font-medium py-2">Unit Cost</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {group.items.map((item) => (
-                    <tr key={item.id} className={item.selected ? '' : 'opacity-40'}>
-                      <td className="py-2 pr-4">
-                        <input
-                          type="checkbox"
-                          checked={item.selected}
-                          onChange={() => toggleItem(item.id)}
-                          className="accent-primary cursor-pointer"
-                        />
-                      </td>
-                      <td className="py-2 pr-4 text-fg">{item.part_name}</td>
-                      <td className="py-2 pr-4 text-muted font-mono text-xs hidden sm:table-cell">{item.sku ?? '—'}</td>
-                      <td className="py-2 pr-4 text-center text-warning font-bold">{item.quantity}</td>
-                      <td className="py-2 pr-4 text-center">
-                        <input
-                          type="number"
-                          min="1"
-                          value={item.quantity_to_order}
-                          onChange={(e) => setQty(item.id, parseInt(e.target.value) || 1)}
-                          className="input w-16 text-sm text-center py-1"
-                          disabled={!item.selected}
-                        />
-                      </td>
-                      <td className="py-2 text-right text-muted">{formatCurrency(item.cost_price)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-border text-muted">
+                          <th className="text-left py-1.5 pr-4 font-medium">Part</th>
+                          <th className="text-left py-1.5 pr-4 font-medium hidden sm:table-cell">SKU</th>
+                          <th className="text-center py-1.5 pr-4 font-medium">Qty Ordered</th>
+                          <th className="text-right py-1.5 font-medium">Unit Cost</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        {po.items.map((item, i) => (
+                          <tr key={i}>
+                            <td className="py-1.5 pr-4 text-fg">{item.part_name}</td>
+                            <td className="py-1.5 pr-4 text-muted font-mono hidden sm:table-cell">{item.sku ?? '—'}</td>
+                            <td className="py-1.5 pr-4 text-center font-bold text-fg">{item.quantity_to_order}</td>
+                            <td className="py-1.5 text-right text-muted">{item.cost_price != null ? `£${item.cost_price.toFixed(2)}` : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
-        ))}
+        )}
       </div>
     </>
   )

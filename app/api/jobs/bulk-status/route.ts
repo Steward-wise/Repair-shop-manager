@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import type { JobStatus } from '@/types'
 
-const VALID_STATUSES: JobStatus[] = ['intake', 'diagnosed', 'in_progress', 'waiting_parts', 'ready', 'collected']
+const VALID_STATUSES: JobStatus[] = ['intake', 'diagnosed', 'awaiting_approval', 'awaiting_repair', 'waiting_parts', 'in_progress', 'ready', 'collected']
 
 export async function PATCH(request: NextRequest) {
   const supabase = createAdminClient()

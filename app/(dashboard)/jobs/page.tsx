@@ -11,7 +11,7 @@ interface PageProps {
   searchParams: Promise<{ status?: string; q?: string; scan?: string; view?: string }>
 }
 
-const STATUSES: JobStatus[] = ['intake', 'diagnosed', 'in_progress', 'waiting_parts', 'ready', 'collected']
+const STATUSES: JobStatus[] = ['intake', 'diagnosed', 'awaiting_approval', 'awaiting_repair', 'waiting_parts', 'in_progress', 'ready', 'collected']
 
 export default async function JobsPage({ searchParams }: PageProps) {
   const { status, q, scan, view } = await searchParams

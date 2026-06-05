@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import PhotoUpload from '@/components/photo-upload'
 import SignaturePad from '@/components/signature-pad'
 import toast, { Toaster } from 'react-hot-toast'
-import { DEVICE_TYPE_LABELS, type DeviceType } from '@/types'
+import { DEVICE_TYPE_LABELS, type DeviceType, type ChecklistItem } from '@/types'
 import type { Customer } from '@/types'
 
 const DEVICE_TYPES = Object.entries(DEVICE_TYPE_LABELS) as [DeviceType, string][]
@@ -54,6 +54,7 @@ export default function NewJobPage() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [selectedTemplate, setSelectedTemplate] = useState('')
   const [warrantyWarning, setWarrantyWarning] = useState<string | null>(null)
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([])
 
   // Intake details
   const [intakeMethod, setIntakeMethod] = useState<'drop_off' | 'collection'>('drop_off')
@@ -85,6 +86,7 @@ export default function NewJobPage() {
     if (t.reported_fault) setReportedFault(t.reported_fault)
     if (t.quoted_price != null) setQuotedPrice(t.quoted_price.toString())
     if (t.warranty_days) setWarrantyDays(t.warranty_days.toString())
+    if (t.checklist?.length) setChecklist(t.checklist.map((item: ChecklistItem) => ({ ...item, checked: false })))
     toast.success(`Template "${t.name}" loaded`)
   }
 
@@ -167,6 +169,7 @@ export default function NewJobPage() {
           intake_date: intakeDate || null,
           alternate_contact: alternateContact.trim() || null,
           intake_signature_url: intakeSignatureUrl,
+          checklist: checklist.length ? checklist : undefined,
         }),
       })
 
@@ -520,6 +523,29 @@ export default function NewJobPage() {
                 onUploaded={setDamagePhotoUrl}
               />
             </div>
+
+            {/* Template checklist */}
+            {checklist.length > 0 && (
+              <div className="border-t border-border pt-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="label mb-0">Pre-repair checklist</label>
+                  <span className="text-xs text-muted">{checklist.filter(i => i.checked).length}/{checklist.length} checked</span>
+                </div>
+                <div className="space-y-2 p-3 bg-surface-2 rounded-lg">
+                  {checklist.map((item, idx) => (
+                    <label key={idx} className="flex items-center gap-3 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={item.checked}
+                        onChange={() => setChecklist(prev => prev.map((c, i) => i === idx ? { ...c, checked: !c.checked } : c))}
+                        className="w-4 h-4 accent-primary shrink-0"
+                      />
+                      <span className={`text-sm ${item.checked ? 'line-through text-muted' : 'text-fg'}`}>{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="label">Additional notes (visible to customer)</label>
