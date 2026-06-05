@@ -34,32 +34,29 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       if (item.inventory_id) {
         // Update by inventory ID
         stockUpdates.push(
-          supabase.rpc('increment_inventory', { item_id: item.inventory_id, qty_delta: qty })
-            .then(async (res) => {
-              if (res.error) {
-                // Fallback: manual increment
-                const { data: inv } = await supabase.from('inventory').select('quantity').eq('id', item.inventory_id).single()
-                if (inv) {
-                  await supabase.from('inventory').update({ quantity: inv.quantity + qty }).eq('id', item.inventory_id)
-                }
-              }
-            })
+          (async () => {
+            // Fallback: manual increment
+            const { data: inv } = await supabase.from('inventory').select('quantity').eq('id', item.inventory_id).single()
+            if (inv) {
+              await supabase.from('inventory').update({ quantity: (inv as { quantity: number }).quantity + qty }).eq('id', item.inventory_id)
+            }
+          })()
         )
       } else if (item.sku) {
         // Find by SKU
         stockUpdates.push(
-          supabase.from('inventory').select('id, quantity').eq('sku', item.sku).single()
-            .then(async ({ data: inv }) => {
-              if (inv) await supabase.from('inventory').update({ quantity: inv.quantity + qty }).eq('id', inv.id)
-            })
+          (async () => {
+            const { data: inv } = await supabase.from('inventory').select('id, quantity').eq('sku', item.sku).single()
+            if (inv) await supabase.from('inventory').update({ quantity: (inv as { id: string; quantity: number }).quantity + qty }).eq('id', (inv as { id: string }).id)
+          })()
         )
       } else if (item.part_name) {
         // Find by part name (best effort)
         stockUpdates.push(
-          supabase.from('inventory').select('id, quantity').ilike('part_name', item.part_name).limit(1).single()
-            .then(async ({ data: inv }) => {
-              if (inv) await supabase.from('inventory').update({ quantity: inv.quantity + qty }).eq('id', inv.id)
-            })
+          (async () => {
+            const { data: inv } = await supabase.from('inventory').select('id, quantity').ilike('part_name', item.part_name).limit(1).single()
+            if (inv) await supabase.from('inventory').update({ quantity: (inv as { id: string; quantity: number }).quantity + qty }).eq('id', (inv as { id: string }).id)
+          })()
         )
       }
     }

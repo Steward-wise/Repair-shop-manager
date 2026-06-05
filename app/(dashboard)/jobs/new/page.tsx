@@ -10,7 +10,6 @@ import type { Customer } from '@/types'
 
 const DEVICE_TYPES = Object.entries(DEVICE_TYPE_LABELS) as [DeviceType, string][]
 
-interface ChecklistItem { label: string; checked: boolean }
 interface Template {
   id: string
   name: string

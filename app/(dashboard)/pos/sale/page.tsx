@@ -49,8 +49,7 @@ export default function POSSalePage() {
     const q = search.toLowerCase()
     return (
       item.part_name.toLowerCase().includes(q) ||
-      (item.sku ?? '').toLowerCase().includes(q) ||
-      (item.category ?? '').toLowerCase().includes(q)
+      (item.sku ?? '').toLowerCase().includes(q)
     )
   }).slice(0, 40)
 

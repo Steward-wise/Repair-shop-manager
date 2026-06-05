@@ -190,7 +190,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Only paid jobs
-  const paidJobIds = new Set((paidJobs ?? []).map((j) => j.id))
+  const paidJobIds = new Set((paidJobs ?? []).map((j: { id: string }) => j.id))
   let totalPartsCost = 0
   let totalMargin = 0
   let marginJobCount = 0
@@ -222,7 +222,7 @@ export async function GET(request: NextRequest) {
 
   // ── CONVERSION RATE ──
   const quotesSent = (quotesData ?? []).length
-  const quotesConverted = (quotesData ?? []).filter((j) => j.payment_status === 'paid').length
+  const quotesConverted = (quotesData ?? []).filter((j: { payment_status: string }) => j.payment_status === 'paid').length
   const conversionRate = quotesSent > 0 ? Math.round((quotesConverted / quotesSent) * 100) : null
 
   // ── TECHNICIAN STATS ──

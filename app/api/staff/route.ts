@@ -11,12 +11,12 @@ export async function GET() {
   const { data, error } = await supabase.auth.admin.listUsers()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const users = (data.users ?? []).map((u) => ({
+  const users = (data.users ?? []).map((u: { id: string; email?: string; user_metadata?: Record<string, unknown>; created_at: string; last_sign_in_at?: string | null }) => ({
     id: u.id,
     email: u.email ?? '',
     role: (u.user_metadata?.role as string) ?? 'manager',
     created_at: u.created_at,
-    last_sign_in_at: u.last_sign_in_at,
+    last_sign_in_at: u.last_sign_in_at ?? null,
   }))
 
   return NextResponse.json({ users })
