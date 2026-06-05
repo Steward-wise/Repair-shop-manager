@@ -3,8 +3,8 @@ export type JobStatus =
   | 'diagnosed'
   | 'awaiting_approval'
   | 'awaiting_repair'
-  | 'in_progress'
   | 'waiting_parts'
+  | 'in_progress'
   | 'ready'
   | 'collected'
 
@@ -147,8 +147,8 @@ export const JOB_STATUS_LABELS: Record<JobStatus, string> = {
   diagnosed: 'Diagnosed',
   awaiting_approval: 'Awaiting Approval',
   awaiting_repair: 'Awaiting Repair',
-  in_progress: 'In Progress',
   waiting_parts: 'Waiting Parts',
+  in_progress: 'In Progress',
   ready: 'Ready',
   collected: 'Collected',
 }
@@ -158,8 +158,8 @@ export const JOB_STATUS_COLORS: Record<JobStatus, string> = {
   diagnosed: 'bg-purple-900/40 text-purple-300 border-purple-700',
   awaiting_approval: 'bg-pink-900/40 text-pink-300 border-pink-700',
   awaiting_repair: 'bg-cyan-900/40 text-cyan-300 border-cyan-700',
-  in_progress: 'bg-yellow-900/40 text-yellow-300 border-yellow-700',
   waiting_parts: 'bg-orange-900/40 text-orange-300 border-orange-700',
+  in_progress: 'bg-yellow-900/40 text-yellow-300 border-yellow-700',
   ready: 'bg-green-900/40 text-green-300 border-green-700',
   collected: 'bg-zinc-800 text-zinc-400 border-zinc-600',
 }
@@ -464,8 +464,30 @@ export const IT_QUOTE_STATUS_LABELS: Record<ITQuoteStatus, string> = {
 
 export const STATUS_NOTIFICATION_MESSAGES: Partial<Record<JobStatus, string>> = {
   diagnosed: 'Your device has been assessed. We will be in touch shortly with a quote.',
-  in_progress: 'Great news — we have started working on your device.',
   waiting_parts: 'We are waiting for parts to arrive. We will update you as soon as they are in.',
+  in_progress: 'Great news — we have started working on your device.',
   ready: 'Your device is ready for collection! Please bring this message as reference.',
   collected: 'Thank you for choosing us. We hope to see you again!',
+}
+
+export interface JobCustodyEvent {
+  id: string
+  job_id: string
+  event_type: 'intake' | 'return_to_customer' | 'collection'
+  direction: 'in' | 'out'
+  event_date: string
+  signature_url: string | null
+  person_name: string | null
+  notes: string | null
+  created_at: string
+}
+
+export interface JobNote {
+  id: string
+  job_id: string
+  content: string
+  note_type: 'note' | 'status_change' | 'custody' | 'payment'
+  staff_name: string | null
+  meta: Record<string, unknown> | null
+  created_at: string
 }

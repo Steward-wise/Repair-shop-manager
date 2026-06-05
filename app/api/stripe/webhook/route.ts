@@ -39,17 +39,26 @@ export async function POST(req: NextRequest) {
     if (session.payment_status === 'paid') {
       const supabase = createAdminClient()
 
-      const { error } = await supabase.from('jobs').update({
+      const { data: updatedJob, error } = await supabase.from('jobs').update({
         status:         'awaiting_repair',
         payment_status: 'paid',
         payment_method: 'card (online)',
         updated_at:     new Date().toISOString(),
-      }).eq('id', jobId)
+      }).eq('id', jobId).select('final_price').single()
 
       if (error) {
         console.error('Failed to update job after payment:', error)
         return NextResponse.json({ error: 'DB update failed' }, { status: 500 })
       }
+
+      const amount = session.amount_total
+        ? `£${(session.amount_total / 100).toFixed(2)}`
+        : updatedJob?.final_price ? `£${Number(updatedJob.final_price).toFixed(2)}` : ''
+
+      await supabase.from('job_notes').insert([
+        { job_id: jobId, content: `Payment received${amount ? ` — ${amount}` : ''} via card (online)`, note_type: 'payment', meta: { payment_status: 'paid', method: 'card (online)' } },
+        { job_id: jobId, content: 'Status changed to Awaiting Repair', note_type: 'status_change', meta: { status: 'awaiting_repair' } },
+      ])
 
       console.log(`✓ Job ${jobId} payment confirmed — moved to awaiting_repair`)
     }

@@ -126,6 +126,27 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
     }
 
+    // Auto-log status change to job_notes timeline
+    if (allowedFields.status && data) {
+      const { JOB_STATUS_LABELS } = await import('@/types')
+      await supabase.from('job_notes').insert({
+        job_id: id,
+        content: `Status changed to ${JOB_STATUS_LABELS[allowedFields.status as keyof typeof JOB_STATUS_LABELS] ?? allowedFields.status}`,
+        note_type: 'status_change',
+        meta: { status: allowedFields.status },
+      })
+    }
+
+    // Auto-log payment to job_notes timeline
+    if (allowedFields.payment_status === 'paid' && data) {
+      await supabase.from('job_notes').insert({
+        job_id: id,
+        content: `Payment received${data.final_price ? ` — £${Number(data.final_price).toFixed(2)}` : ''}${data.payment_method ? ` via ${data.payment_method}` : ''}`,
+        note_type: 'payment',
+        meta: { payment_status: 'paid', final_price: data.final_price, payment_method: data.payment_method },
+      })
+    }
+
     // Fire push notification in background when status changes
     if (allowedFields.status && data) {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'

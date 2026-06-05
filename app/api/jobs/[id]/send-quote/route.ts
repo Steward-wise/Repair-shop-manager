@@ -74,5 +74,10 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     shopName,
   })
 
+  // Log to timeline
+  await supabase.from('job_notes').insert([
+    { job_id: id, content: `Quote for £${job.final_price.toFixed(2)} sent to customer for approval`, note_type: 'status_change', meta: { status: 'awaiting_approval', price: job.final_price } },
+  ])
+
   return NextResponse.json({ ok: true, payment_url: session.url })
 }

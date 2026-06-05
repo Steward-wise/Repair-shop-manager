@@ -10,10 +10,11 @@ import SignaturePad from '@/components/signature-pad'
 import { formatTicketNumber, formatDateTime, formatCurrency, generateCollectionLink } from '@/lib/utils'
 import {
   JOB_STATUS_LABELS, DEVICE_TYPE_LABELS,
-  type Job, type JobStatus, type InventoryItem, type JobPart, type JobTimeLog
+  type Job, type JobStatus, type InventoryItem, type JobPart, type JobTimeLog,
+  type JobCustodyEvent, type JobNote,
 } from '@/types'
 
-const STATUS_FLOW: JobStatus[] = ['intake', 'diagnosed', 'awaiting_approval', 'awaiting_repair', 'in_progress', 'waiting_parts', 'ready', 'collected']
+const STATUS_FLOW: JobStatus[] = ['intake', 'diagnosed', 'awaiting_approval', 'awaiting_repair', 'waiting_parts', 'in_progress', 'ready', 'collected']
 
 export default function JobDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -46,12 +47,27 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const [sendingApproval, setSendingApproval] = useState(false)
   const [checklist, setChecklist] = useState<{ label: string; checked: boolean }[]>([])
 
-  // Sign collection modal
+  // Custody events
+  const [custodyEvents, setCustodyEvents] = useState<JobCustodyEvent[]>([])
+  const [showCustodyModal, setShowCustodyModal] = useState(false)
+  const [custodyModalType, setCustodyModalType] = useState<'intake' | 'return_to_customer' | 'collection'>('intake')
+  const [custodyPersonName, setCustodyPersonName] = useState('')
+  const [custodyNotes, setCustodyNotes] = useState('')
+  const [custodyDate, setCustodyDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [submittingCustody, setSubmittingCustody] = useState(false)
+
+  // Job notes / timeline
+  const [jobNotes, setJobNotes] = useState<JobNote[]>([])
+  const [newNote, setNewNote] = useState('')
+  const [noteStaffName, setNoteStaffName] = useState('')
+  const [savingNote2, setSavingNote2] = useState(false)
+
+  // Sign collection modal (legacy — kept for backward compat)
   const [showSignModal, setShowSignModal] = useState(false)
   const [signCollectorName, setSignCollectorName] = useState('')
   const [signingCollection, setSigningCollection] = useState(false)
 
-  // Sign intake modal
+  // Sign intake modal (legacy)
   const [showIntakeSignModal, setShowIntakeSignModal] = useState(false)
   const [signingIntake, setSigningIntake] = useState(false)
 
@@ -59,6 +75,8 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     loadJob()
     loadInventory()
     loadTimeLogs()
+    loadCustodyEvents()
+    loadJobNotes()
   }, [id])
 
   // Live timer tick
@@ -103,6 +121,90 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
       setTimerRunning(true)
       const startedSeconds = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000)
       setElapsed(startedSeconds)
+    }
+  }
+
+  async function loadCustodyEvents() {
+    const res = await fetch(`/api/jobs/${id}/custody`)
+    const data = await res.json()
+    setCustodyEvents(data.events ?? [])
+  }
+
+  async function loadJobNotes() {
+    const res = await fetch(`/api/jobs/${id}/notes`)
+    const data = await res.json()
+    setJobNotes(data.notes ?? [])
+  }
+
+  async function addJobNote() {
+    if (!newNote.trim()) return
+    setSavingNote2(true)
+    const res = await fetch(`/api/jobs/${id}/notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: newNote.trim(), note_type: 'note', staff_name: noteStaffName.trim() || null }),
+    })
+    const data = await res.json()
+    if (!res.ok) { toast.error('Failed to add note'); setSavingNote2(false); return }
+    setJobNotes((prev) => [...prev, data.note])
+    setNewNote('')
+    setSavingNote2(false)
+  }
+
+  async function handleCustodySignature(dataUrl: string) {
+    setSubmittingCustody(true)
+    try {
+      let signatureUrl: string | null = null
+      const blob = await (await fetch(dataUrl)).blob()
+      const formData = new FormData()
+      formData.append('file', blob, 'custody-signature.png')
+      formData.append('jobId', id)
+      formData.append('photoType', 'signature')
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+      const uploadData = await uploadRes.json()
+      if (uploadRes.ok) signatureUrl = uploadData.url
+
+      const res = await fetch(`/api/jobs/${id}/custody`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_type: custodyModalType,
+          direction: custodyModalType === 'intake' ? 'in' : 'out',
+          event_date: custodyDate,
+          signature_url: signatureUrl,
+          person_name: custodyPersonName.trim() || null,
+          notes: custodyNotes.trim() || null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to record custody event')
+
+      setCustodyEvents((prev) => [...prev, data.event])
+      await loadJobNotes()
+
+      // If this is a collection, also update job status
+      if (custodyModalType === 'collection') {
+        await fetch(`/api/jobs/${id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'collected', signature_url: signatureUrl, collector_name: custodyPersonName.trim() || 'Customer' }),
+        })
+        await loadJob()
+      }
+
+      setShowCustodyModal(false)
+      setCustodyPersonName('')
+      setCustodyNotes('')
+      setCustodyDate(new Date().toISOString().split('T')[0])
+      toast.success(
+        custodyModalType === 'intake' ? 'Intake recorded' :
+        custodyModalType === 'return_to_customer' ? 'Return to customer recorded' :
+        'Collection recorded'
+      )
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Something went wrong')
+    } finally {
+      setSubmittingCustody(false)
     }
   }
 
@@ -388,6 +490,11 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               <div className="flex items-center gap-3 flex-wrap">
                 <h1 className="text-2xl font-bold text-fg font-mono">{formatTicketNumber(job.ticket_number)}</h1>
                 <JobStatusBadge status={job.status} />
+                {job.payment_status === 'paid' && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border-2 border-green-500 text-green-400 bg-green-900/30 tracking-widest uppercase">
+                    ✓ Paid
+                  </span>
+                )}
               </div>
               <p className="text-muted text-sm mt-0.5">{job.device_make} {job.device_model} · {job.customer?.name ?? 'Walk-in'}</p>
             </div>
@@ -411,28 +518,33 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               </svg>
               Print Job Sheet
             </button>
-            {!job.intake_signature_url && (
-              <button
-                onClick={() => setShowIntakeSignModal(true)}
-                className="btn-secondary text-sm flex items-center gap-2"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>
-                </svg>
-                Sign Intake
-              </button>
-            )}
-            {job.status !== 'collected' && (
-              <button
-                onClick={() => setShowSignModal(true)}
-                className="btn-secondary text-sm flex items-center gap-2"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>
-                </svg>
-                Sign Collection
-              </button>
-            )}
+            <button
+              onClick={() => { setCustodyModalType('intake'); setShowCustodyModal(true) }}
+              className="btn-secondary text-sm flex items-center gap-2"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>
+              </svg>
+              Sign Intake
+            </button>
+            <button
+              onClick={() => { setCustodyModalType('return_to_customer'); setShowCustodyModal(true) }}
+              className="btn-secondary text-sm flex items-center gap-2"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>
+              </svg>
+              Return to Customer
+            </button>
+            <button
+              onClick={() => { setCustodyModalType('collection'); setShowCustodyModal(true) }}
+              className="btn-secondary text-sm flex items-center gap-2"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>
+              </svg>
+              Sign Collection
+            </button>
             <button
               onClick={() => window.open(`/jobs/${id}/intake-receipt`, '_blank')}
               className="btn-secondary text-sm flex items-center gap-2"
@@ -854,7 +966,12 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
           )}
 
           {/* Payment */}
-          <div className="card space-y-3">
+          <div className="card space-y-3 relative overflow-hidden">
+            {paymentStatus === 'paid' && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-10" style={{ transform: 'rotate(-25deg)' }}>
+                <span className="text-6xl font-black tracking-widest text-green-500/20 border-8 border-green-500/20 px-6 py-2 rounded-xl uppercase">PAID</span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-fg">Payment</h2>
               <span className={`text-xs font-medium px-2 py-1 rounded-full border ${
@@ -862,7 +979,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 paymentStatus === 'deposit_paid' ? 'bg-yellow-900/40 text-yellow-300 border-yellow-700' :
                 'bg-red-900/40 text-red-300 border-red-700'
               }`}>
-                {paymentStatus === 'paid' ? 'Paid' : paymentStatus === 'deposit_paid' ? 'Deposit Paid' : 'Unpaid'}
+                {paymentStatus === 'paid' ? '✓ Paid' : paymentStatus === 'deposit_paid' ? 'Deposit Paid' : 'Unpaid'}
               </span>
             </div>
             <div>
@@ -940,73 +1057,163 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               </div>
             )}
           </div>
+
+          {/* Chain of Custody */}
+          <div className="card space-y-3">
+            <h2 className="font-semibold text-fg">Chain of Custody</h2>
+            {custodyEvents.length === 0 ? (
+              <p className="text-muted text-sm">No custody events recorded yet.</p>
+            ) : (
+              <div className="relative space-y-0">
+                {custodyEvents.map((evt, i) => (
+                  <div key={evt.id} className="flex gap-3">
+                    <div className="flex flex-col items-center">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
+                        evt.direction === 'in' ? 'bg-blue-900/40 text-blue-300' : 'bg-orange-900/40 text-orange-300'
+                      }`}>
+                        {evt.direction === 'in' ? '↓' : '↑'}
+                      </div>
+                      {i < custodyEvents.length - 1 && <div className="w-px flex-1 bg-border my-1" />}
+                    </div>
+                    <div className="pb-4 flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-fg">
+                          {evt.event_type === 'intake' ? 'Device received (intake)' : evt.event_type === 'return_to_customer' ? 'Returned to customer' : 'Collected by customer'}
+                        </span>
+                        {evt.signature_url && (
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-green-900/30 text-green-400 border border-green-700/40">✓ Signed</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted mt-0.5">
+                        {new Date(evt.event_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        {evt.person_name ? ` · ${evt.person_name}` : ''}
+                      </p>
+                      {evt.notes && <p className="text-xs text-muted italic mt-0.5">{evt.notes}</p>}
+                      {evt.signature_url && (
+                        <div className="mt-1.5 bg-white rounded p-1 inline-block">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={evt.signature_url} alt="Signature" className="h-10 object-contain" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Notes Timeline */}
+          <div className="card space-y-4">
+            <h2 className="font-semibold text-fg">Notes &amp; Timeline</h2>
+            {jobNotes.length === 0 ? (
+              <p className="text-muted text-sm">No activity yet.</p>
+            ) : (
+              <div className="space-y-0">
+                {jobNotes.map((note, i) => {
+                  const isNote = note.note_type === 'note'
+                  const isStatus = note.note_type === 'status_change'
+                  const isCustody = note.note_type === 'custody'
+                  const isPayment = note.note_type === 'payment'
+                  return (
+                    <div key={note.id} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs ${
+                          isNote ? 'bg-surface-2 text-muted' :
+                          isStatus ? 'bg-purple-900/40 text-purple-300' :
+                          isCustody ? 'bg-blue-900/40 text-blue-300' :
+                          'bg-green-900/40 text-green-300'
+                        }`}>
+                          {isNote ? '📝' : isStatus ? '→' : isCustody ? '📦' : '£'}
+                        </div>
+                        {i < jobNotes.length - 1 && <div className="w-px flex-1 bg-border my-1" />}
+                      </div>
+                      <div className="pb-3 flex-1">
+                        <p className="text-sm text-fg">{note.content}</p>
+                        <p className="text-xs text-muted mt-0.5">
+                          {new Date(note.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          {note.staff_name ? ` · ${note.staff_name}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Add note */}
+            <div className="border-t border-border pt-3 space-y-2">
+              <textarea
+                className="input resize-none text-sm"
+                rows={2}
+                placeholder="Add a note…"
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="input text-sm flex-1"
+                  placeholder="Your name (optional)"
+                  value={noteStaffName}
+                  onChange={(e) => setNoteStaffName(e.target.value)}
+                />
+                <button
+                  onClick={addJobNote}
+                  disabled={savingNote2 || !newNote.trim()}
+                  className="btn-primary text-sm px-4"
+                >
+                  {savingNote2 ? 'Adding…' : 'Add Note'}
+                </button>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
 
-      {/* Sign Intake Modal */}
-      {showIntakeSignModal && (
+      {/* Unified Custody Modal */}
+      {showCustodyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-md space-y-5 p-6">
+          <div className="bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-md space-y-4 p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-fg">Sign for Intake</h2>
-                <p className="text-xs text-muted mt-0.5">Customer confirms they have handed over the device</p>
+                <h2 className="text-lg font-bold text-fg">
+                  {custodyModalType === 'intake' ? 'Sign for Intake' :
+                   custodyModalType === 'return_to_customer' ? 'Sign — Return to Customer' :
+                   'Sign for Collection'}
+                </h2>
+                <p className="text-xs text-muted mt-0.5">
+                  {custodyModalType === 'intake' ? 'Customer confirms they are handing over the device' :
+                   custodyModalType === 'return_to_customer' ? 'Record that the device is being temporarily returned' :
+                   'Customer confirms they are collecting the repaired device'}
+                </p>
               </div>
-              <button
-                onClick={() => setShowIntakeSignModal(false)}
-                className="text-muted hover:text-fg p-1"
-              >
+              <button onClick={() => setShowCustodyModal(false)} className="text-muted hover:text-fg p-1">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
                 </svg>
               </button>
             </div>
 
-            <SignaturePad onSave={handleSignIntake} disabled={signingIntake} />
-
-            {signingIntake && (
-              <p className="text-center text-muted text-sm">Saving signature…</p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Sign Collection Modal */}
-      {showSignModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-md space-y-5 p-6">
-            <div className="flex items-center justify-between">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <h2 className="text-lg font-bold text-fg">Sign for Collection</h2>
-                <p className="text-xs text-muted mt-0.5">Customer signs to confirm they are collecting this device</p>
+                <label className="label">Person&apos;s name</label>
+                <input type="text" className="input" placeholder="Full name" value={custodyPersonName} onChange={(e) => setCustodyPersonName(e.target.value)} autoComplete="name" />
               </div>
-              <button
-                onClick={() => { setShowSignModal(false); setSignCollectorName('') }}
-                className="text-muted hover:text-fg p-1"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
-                </svg>
-              </button>
+              <div>
+                <label className="label">Date</label>
+                <input type="date" className="input" value={custodyDate} onChange={(e) => setCustodyDate(e.target.value)} />
+              </div>
             </div>
 
             <div>
-              <label className="label">Collector name</label>
-              <input
-                type="text"
-                className="input"
-                placeholder="Full name of person collecting"
-                value={signCollectorName}
-                onChange={(e) => setSignCollectorName(e.target.value)}
-                autoComplete="name"
-              />
+              <label className="label">Notes (optional)</label>
+              <input type="text" className="input" placeholder="e.g. waiting for screen part" value={custodyNotes} onChange={(e) => setCustodyNotes(e.target.value)} />
             </div>
 
-            <SignaturePad onSave={handleSignCollection} disabled={signingCollection} />
+            <SignaturePad onSave={handleCustodySignature} disabled={submittingCustody} />
 
-            {signingCollection && (
-              <p className="text-center text-muted text-sm">Recording collection…</p>
-            )}
+            {submittingCustody && <p className="text-center text-muted text-sm">Recording…</p>}
           </div>
         </div>
       )}
