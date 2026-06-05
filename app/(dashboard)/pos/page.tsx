@@ -5,9 +5,21 @@ import { useRouter } from 'next/navigation'
 
 const TILES = [
   {
+    label: 'Walk-in Sale',
+    href: '/pos/sale',
+    color: 'bg-primary hover:bg-primary/90',
+    badge: 'NEW',
+    icon: (
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/>
+        <path d="M16 10a4 4 0 0 1-8 0"/>
+      </svg>
+    ),
+  },
+  {
     label: 'New Repair',
     href: '/jobs/new',
-    color: 'bg-primary hover:bg-primary/90',
+    color: 'bg-surface-2 hover:bg-surface border border-border',
     icon: (
       <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M5 12h14"/><path d="M12 5v14"/>
@@ -120,8 +132,13 @@ export default function PosPage() {
           <Link
             key={tile.href}
             href={tile.href}
-            className={`${tile.color} rounded-2xl flex flex-col items-center justify-center gap-4 text-center p-6 transition-all duration-150 select-none active:scale-95 min-h-[140px]`}
+            className={`${tile.color} rounded-2xl flex flex-col items-center justify-center gap-4 text-center p-6 transition-all duration-150 select-none active:scale-95 min-h-[140px] relative`}
           >
+            {'badge' in tile && tile.badge && (
+              <span className="absolute top-3 right-3 text-xs font-bold bg-white/20 text-white px-1.5 py-0.5 rounded-full">
+                {tile.badge}
+              </span>
+            )}
             <span className="text-fg">{tile.icon}</span>
             <span className="text-fg font-semibold text-base leading-tight">{tile.label}</span>
           </Link>
