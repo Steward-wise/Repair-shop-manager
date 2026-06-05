@@ -531,3 +531,80 @@ export async function sendJobQuoteApproval({
     return true
   } catch { return false }
 }
+
+export async function sendProgressUpdate({
+  to, customerId, customerName, ticketNumber, deviceInfo, caption, message, photoUrl,
+}: {
+  to: string
+  customerId: string
+  customerName: string
+  ticketNumber: string
+  deviceInfo: string
+  caption: string | null
+  message: string | null
+  photoUrl: string
+}): Promise<boolean> {
+  if (!process.env.RESEND_API_KEY) return false
+  const unsubUrl = unsubscribeUrl(customerId)
+
+  const body = `
+    <p style="margin:0 0 16px;font-size:16px;color:#a1a1aa;">Hi ${customerName},</p>
+    <p style="margin:0 0 20px;font-size:16px;color:#fafafa;line-height:1.6;">
+      We have an update on your repair. Here is a photo from our technician.
+    </p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#27272a;border-radius:8px;padding:16px;margin-bottom:20px;">
+      <tr><td style="padding:4px 0;"><span style="color:#a1a1aa;font-size:13px;">Ticket</span><span style="float:right;color:#fafafa;font-family:monospace;font-weight:600;">${ticketNumber}</span></td></tr>
+      <tr><td style="padding:4px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:13px;">Device</span><span style="float:right;color:#fafafa;">${deviceInfo}</span></td></tr>
+    </table>
+    <img src="${photoUrl}" alt="Repair progress photo" style="width:100%;max-width:480px;border-radius:8px;display:block;margin-bottom:16px;" />
+    ${caption ? `<p style="margin:0 0 12px;color:#a1a1aa;font-size:14px;font-style:italic;">${caption}</p>` : ''}
+    ${message ? `<p style="margin:0 0 16px;color:#fafafa;font-size:15px;line-height:1.6;">${message}</p>` : ''}
+    ${SHOP_PHONE ? `<p style="margin:0;color:#a1a1aa;font-size:14px;">Questions? Call us on <a href="tel:${SHOP_PHONE}" style="color:#dc2626;">${SHOP_PHONE}</a></p>` : ''}`
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM, to,
+      subject: `Repair update — ${ticketNumber} · ${SHOP_NAME}`,
+      html: emailShell('Repair Update', body, unsubUrl),
+      headers: listUnsubscribeHeaders(customerId),
+    })
+    if (error) { console.error('Progress update email error:', error); return false }
+    return true
+  } catch { return false }
+}
+
+export async function sendCustomerMessageNotification({
+  staffEmail, customerName, ticketNumber, deviceInfo, message, jobId,
+}: {
+  staffEmail: string
+  customerName: string
+  ticketNumber: string
+  deviceInfo: string
+  message: string
+  jobId: string
+}): Promise<boolean> {
+  if (!process.env.RESEND_API_KEY) return false
+  const jobUrl = `${appUrl()}/jobs/${jobId}`
+
+  const body = `
+    <p style="margin:0 0 16px;font-size:16px;color:#fafafa;font-weight:600;">New message from customer</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#27272a;border-radius:8px;padding:16px;margin-bottom:20px;">
+      <tr><td style="padding:4px 0;"><span style="color:#a1a1aa;font-size:13px;">Customer</span><span style="float:right;color:#fafafa;font-weight:600;">${customerName}</span></td></tr>
+      <tr><td style="padding:4px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:13px;">Ticket</span><span style="float:right;color:#fafafa;font-family:monospace;">${ticketNumber}</span></td></tr>
+      <tr><td style="padding:4px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:13px;">Device</span><span style="float:right;color:#fafafa;">${deviceInfo}</span></td></tr>
+    </table>
+    <div style="background:#1a1a1a;border-left:3px solid #dc2626;border-radius:4px;padding:14px;margin-bottom:20px;">
+      <p style="margin:0;color:#fafafa;font-size:15px;line-height:1.6;">${message}</p>
+    </div>
+    <a href="${jobUrl}" style="display:inline-block;background:#dc2626;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;">View Job & Reply →</a>`
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM, to: staffEmail,
+      subject: `Customer message — ${ticketNumber} (${customerName})`,
+      html: emailShell('Customer Message', body),
+    })
+    if (error) { console.error('Customer message notify error:', error); return false }
+    return true
+  } catch { return false }
+}

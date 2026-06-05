@@ -47,6 +47,10 @@ export default function SettingsPage() {
   const followup = useAction('/api/jobs/followup')
   const digest = useAction('/api/digest')
 
+  // App settings (ready reminder days)
+  const [reminderDays, setReminderDays] = useState('3')
+  const [savingReminder, setSavingReminder] = useState(false)
+
   const appName = process.env.NEXT_PUBLIC_APP_NAME ?? 'Repair Shop'
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
   const shopPhone = process.env.NEXT_PUBLIC_SHOP_PHONE ?? ''
@@ -55,6 +59,11 @@ export default function SettingsPage() {
     const qbStatus = searchParams.get('qb')
     if (qbStatus === 'connected') toast.success('QuickBooks connected!')
     if (qbStatus === 'error') toast.error('QuickBooks connection failed. Check your credentials.')
+
+    // Load app settings
+    fetch('/api/settings').then(r => r.json()).then(d => {
+      if (d.settings?.ready_reminder_days) setReminderDays(d.settings.ready_reminder_days)
+    })
 
     // Load technicians
     fetch('/api/technicians').then(r => r.json()).then(d => setTechnicians(d.technicians ?? []))
@@ -275,25 +284,57 @@ export default function SettingsPage() {
         <div className="card space-y-4">
           <div>
             <h2 className="font-semibold text-fg">Follow-up Reminders</h2>
-            <p className="text-xs text-muted mt-0.5">Send reminder emails to customers whose device has been ready for more than 3 days</p>
+            <p className="text-xs text-muted mt-0.5">Automatically remind customers when their device has been ready to collect for N days. This is a transactional notification — sent regardless of marketing consent.</p>
           </div>
+
+          <div className="flex items-end gap-3">
+            <div className="flex-1 max-w-xs">
+              <label className="label text-xs">Send reminder after (days)</label>
+              <input
+                type="number"
+                min="1"
+                max="30"
+                className="input"
+                value={reminderDays}
+                onChange={(e) => setReminderDays(e.target.value)}
+              />
+            </div>
+            <button
+              onClick={async () => {
+                setSavingReminder(true)
+                const res = await fetch('/api/settings', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ key: 'ready_reminder_days', value: reminderDays }),
+                })
+                setSavingReminder(false)
+                if (res.ok) toast.success('Reminder days saved')
+                else toast.error('Failed to save')
+              }}
+              disabled={savingReminder}
+              className="btn-secondary text-sm"
+            >
+              {savingReminder ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+
           <div className="flex gap-3 flex-wrap">
             <button
               onClick={async () => {
                 const data = await followup.run()
-                if (data?.sent !== undefined) toast.success(`Follow-up sent to ${data.sent} customer(s)`)
-                else toast.error('Failed to send follow-ups')
+                if (data?.sent !== undefined) toast.success(`Reminder sent to ${data.sent} customer(s)`)
+                else toast.error('Failed to send reminders')
               }}
               disabled={followup.loading}
               className="btn-primary text-sm"
             >
-              {followup.loading ? 'Sending…' : 'Send Follow-up Reminders Now'}
+              {followup.loading ? 'Sending…' : 'Send Reminders Now'}
             </button>
             <button
               onClick={async () => {
                 const res = await fetch('/api/jobs/followup?dry_run=true', { method: 'POST' })
                 const data = await res.json()
-                if (data?.would_send !== undefined) toast.success(`Dry run: would send to ${data.would_send} customer(s)`)
+                if (data?.would_send !== undefined) toast.success(`Dry run: would send to ${data.would_send} customer(s) (after ${data.reminder_days} days)`)
               }}
               className="btn-secondary text-sm"
             >

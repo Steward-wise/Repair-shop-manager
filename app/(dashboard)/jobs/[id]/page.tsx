@@ -62,6 +62,13 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const [noteStaffName, setNoteStaffName] = useState('')
   const [savingNote2, setSavingNote2] = useState(false)
 
+  // Progress photo modal
+  const [showProgressModal, setShowProgressModal] = useState(false)
+  const [progressPhotoFile, setProgressPhotoFile] = useState<File | null>(null)
+  const [progressCaption, setProgressCaption] = useState('')
+  const [progressMessage, setProgressMessage] = useState('')
+  const [sendingProgress, setSendingProgress] = useState(false)
+
   // Sign collection modal (legacy — kept for backward compat)
   const [showSignModal, setShowSignModal] = useState(false)
   const [signCollectorName, setSignCollectorName] = useState('')
@@ -349,6 +356,40 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     setSendingApproval(false)
   }
 
+  async function sendProgressPhoto() {
+    if (!progressPhotoFile) return
+    setSendingProgress(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', progressPhotoFile)
+      formData.append('jobId', id)
+      formData.append('photoType', 'repair')
+      const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+      const uploadData = await uploadRes.json()
+      if (!uploadRes.ok) throw new Error(uploadData.error ?? 'Upload failed')
+
+      const res = await fetch(`/api/jobs/${id}/progress-photo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photo_url: uploadData.url, caption: progressCaption.trim() || null, message: progressMessage.trim() || null }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed')
+
+      await loadJob()
+      await loadJobNotes()
+      setShowProgressModal(false)
+      setProgressPhotoFile(null)
+      setProgressCaption('')
+      setProgressMessage('')
+      toast.success(data.email_sent ? 'Progress photo sent to customer!' : 'Photo saved (customer has no email)')
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Something went wrong')
+    } finally {
+      setSendingProgress(false)
+    }
+  }
+
   async function handleSignIntake(dataUrl: string) {
     setSigningIntake(true)
     try {
@@ -517,6 +558,16 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>
               </svg>
               Print Job Sheet
+            </button>
+            <button
+              onClick={() => setShowProgressModal(true)}
+              className="btn-secondary text-sm flex items-center gap-2"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+                <circle cx="12" cy="13" r="3"/>
+              </svg>
+              Send Progress Photo
             </button>
             <button
               onClick={() => { setCustodyModalType('intake'); setShowCustodyModal(true) }}
@@ -1170,6 +1221,58 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
 
         </div>
       </div>
+
+      {/* Progress Photo Modal */}
+      {showProgressModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-md space-y-4 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-fg">Send Progress Update</h2>
+                <p className="text-xs text-muted mt-0.5">Photo is emailed to the customer with an optional caption and message</p>
+              </div>
+              <button onClick={() => { setShowProgressModal(false); setProgressPhotoFile(null); setProgressCaption(''); setProgressMessage('') }} className="text-muted hover:text-fg p-1">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+                </svg>
+              </button>
+            </div>
+
+            <div>
+              <label className="label">Photo *</label>
+              <input
+                type="file"
+                accept="image/*"
+                className="input text-sm py-2 file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-primary file:text-white cursor-pointer"
+                onChange={(e) => setProgressPhotoFile(e.target.files?.[0] ?? null)}
+              />
+              {progressPhotoFile && (
+                <p className="text-xs text-green-400 mt-1">✓ {progressPhotoFile.name}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="label">Caption <span className="text-muted font-normal">(optional)</span></label>
+              <input type="text" className="input" placeholder="e.g. Screen replacement in progress" value={progressCaption} onChange={(e) => setProgressCaption(e.target.value)} />
+            </div>
+
+            <div>
+              <label className="label">Personal message <span className="text-muted font-normal">(optional)</span></label>
+              <textarea className="input resize-none" rows={2} placeholder="e.g. All going well, should be ready tomorrow…" value={progressMessage} onChange={(e) => setProgressMessage(e.target.value)} />
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => { setShowProgressModal(false); setProgressPhotoFile(null) }} className="btn-secondary flex-1 text-sm">Cancel</button>
+              <button onClick={sendProgressPhoto} disabled={!progressPhotoFile || sendingProgress} className="btn-primary flex-1 text-sm">
+                {sendingProgress ? 'Sending…' : job?.customer?.email ? 'Send to Customer' : 'Save Photo'}
+              </button>
+            </div>
+            {!job?.customer?.email && (
+              <p className="text-xs text-muted text-center">No email on file — photo will be saved but not emailed</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Unified Custody Modal */}
       {showCustodyModal && (

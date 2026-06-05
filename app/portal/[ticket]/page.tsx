@@ -1,23 +1,43 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import { createClient } from '@/lib/supabase/client'
 import JobStatusBadge from '@/components/job-status-badge'
 import { formatTicketNumber, formatDateTime, formatCurrency, formatRelative } from '@/lib/utils'
 import { DEVICE_TYPE_LABELS, JOB_STATUS_LABELS, type Job, type JobStatus } from '@/types'
 
-const STATUS_FLOW: JobStatus[] = ['intake', 'diagnosed', 'in_progress', 'waiting_parts', 'ready', 'collected']
+const STATUS_FLOW: JobStatus[] = ['intake', 'diagnosed', 'awaiting_approval', 'awaiting_repair', 'waiting_parts', 'in_progress', 'ready', 'collected']
+
+interface PortalNote {
+  id: string
+  content: string
+  note_type: string
+  source: string
+  staff_name: string | null
+  created_at: string
+}
+
+interface PortalJob extends Job {
+  portal_notes: PortalNote[]
+  repair_photos: { id: string; url: string; caption: string | null; created_at: string }[]
+}
 
 export default function PortalTicketPage() {
   const { ticket } = useParams<{ ticket: string }>()
   const router = useRouter()
-  const [job, setJob] = useState<Job | null>(null)
+  const [job, setJob] = useState<PortalJob | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [message, setMessage] = useState('')
+  const [sending, setSending] = useState(false)
+  const [notes, setNotes] = useState<PortalNote[]>([])
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const shopPhone = process.env.NEXT_PUBLIC_SHOP_PHONE ?? ''
+  const shopName = process.env.NEXT_PUBLIC_APP_NAME ?? 'Repair Shop'
 
   useEffect(() => {
     async function load() {
@@ -30,12 +50,38 @@ export default function PortalTicketPage() {
 
       const res = await fetch(`/api/portal/jobs?email=${encodeURIComponent(user.email ?? '')}&ticket=${ticketNum}`)
       const data = await res.json()
-      if (data.job) setJob(data.job)
-      else setNotFound(true)
+      if (data.job) {
+        setJob(data.job)
+        setNotes(data.job.portal_notes ?? [])
+      } else setNotFound(true)
       setLoading(false)
     }
     load()
   }, [ticket, router])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [notes])
+
+  async function sendMessage() {
+    if (!message.trim() || !job) return
+    setSending(true)
+    try {
+      const res = await fetch('/api/portal/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: job.id, message: message.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Failed to send')
+      setNotes(prev => [...prev, data.note])
+      setMessage('')
+    } catch {
+      // silently fail — could show toast if needed
+    } finally {
+      setSending(false)
+    }
+  }
 
   if (loading) return (
     <div className="min-h-screen bg-bg flex items-center justify-center">
@@ -70,6 +116,7 @@ export default function PortalTicketPage() {
       </div>
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
+
         {/* Header */}
         <div className="card">
           <div className="flex items-start justify-between">
@@ -83,7 +130,7 @@ export default function PortalTicketPage() {
           </div>
         </div>
 
-        {/* Progress */}
+        {/* Progress tracker */}
         <div className="card">
           <h2 className="text-sm font-semibold text-fg mb-4">Progress</h2>
           <div className="space-y-2">
@@ -100,13 +147,14 @@ export default function PortalTicketPage() {
                   <span className={`text-sm ${isCurrent ? 'text-fg font-semibold' : isPast ? 'text-muted' : 'text-muted opacity-50'}`}>
                     {JOB_STATUS_LABELS[s]}
                   </span>
+                  {isCurrent && <span className="ml-auto text-xs text-primary animate-pulse">● Now</span>}
                 </div>
               )
             })}
           </div>
         </div>
 
-        {/* Fault */}
+        {/* Reported fault */}
         <div className="card space-y-2">
           <h2 className="text-sm font-semibold text-fg">Reported Issue</h2>
           <p className="text-sm text-muted">{job.reported_fault}</p>
@@ -129,8 +177,82 @@ export default function PortalTicketPage() {
                 <span className="text-primary">{formatCurrency(job.final_price)}</span>
               </div>
             )}
+            {job.payment_status === 'paid' && (
+              <p className="text-xs text-green-400 font-medium">✓ Paid</p>
+            )}
           </div>
         )}
+
+        {/* Progress photos from technician */}
+        {job.repair_photos && job.repair_photos.length > 0 && (
+          <div className="card space-y-3">
+            <h2 className="text-sm font-semibold text-fg">Repair Updates</h2>
+            <div className="space-y-3">
+              {job.repair_photos.map((photo) => (
+                <div key={photo.id} className="space-y-1.5">
+                  <div className="relative rounded-lg overflow-hidden bg-surface-2 h-48">
+                    <Image src={photo.url} alt="Repair progress" fill className="object-cover" />
+                  </div>
+                  {photo.caption && <p className="text-xs text-muted italic">{photo.caption}</p>}
+                  <p className="text-xs text-muted">{formatRelative(photo.created_at)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Messages */}
+        <div className="card space-y-3">
+          <h2 className="text-sm font-semibold text-fg">Messages</h2>
+
+          {notes.length === 0 ? (
+            <p className="text-xs text-muted text-center py-4">No messages yet. Send us a message below!</p>
+          ) : (
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {notes.map((note) => {
+                const isCustomer = note.source === 'customer'
+                return (
+                  <div key={note.id} className={`flex ${isCustomer ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                      isCustomer
+                        ? 'bg-primary text-white rounded-br-sm'
+                        : 'bg-surface-2 text-fg rounded-bl-sm'
+                    }`}>
+                      {!isCustomer && (
+                        <p className="text-xs font-semibold mb-1 opacity-70">{shopName}</p>
+                      )}
+                      <p className="text-sm leading-snug">{note.content}</p>
+                      <p className={`text-xs mt-1 ${isCustomer ? 'text-white/60' : 'text-muted'}`}>
+                        {formatRelative(note.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+          )}
+
+          {/* Message input */}
+          <div className="flex gap-2 border-t border-border pt-3">
+            <input
+              type="text"
+              className="input flex-1 text-sm"
+              placeholder="Type a message…"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
+              disabled={sending}
+            />
+            <button
+              onClick={sendMessage}
+              disabled={!message.trim() || sending}
+              className="btn-primary text-sm px-4 shrink-0"
+            >
+              {sending ? '…' : 'Send'}
+            </button>
+          </div>
+        </div>
 
         {/* Dates */}
         <div className="card space-y-2 text-sm">
@@ -152,7 +274,7 @@ export default function PortalTicketPage() {
 
         {shopPhone && (
           <p className="text-center text-sm text-muted">
-            Questions? <a href={`tel:${shopPhone}`} className="text-primary">{shopPhone}</a>
+            Prefer to call? <a href={`tel:${shopPhone}`} className="text-primary">{shopPhone}</a>
           </p>
         )}
       </div>

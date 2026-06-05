@@ -28,7 +28,21 @@ export async function GET(request: NextRequest) {
       .eq('ticket_number', ticketNum)
       .single()
 
-    return NextResponse.json({ job: job ?? null })
+    if (!job) return NextResponse.json({ job: null })
+
+    // Fetch notes visible to customer: customer messages + staff notes (not system/status/custody/payment)
+    const { data: notes } = await supabase
+      .from('job_notes')
+      .select('id,content,note_type,source,staff_name,created_at')
+      .eq('job_id', job.id)
+      .in('source', ['customer', 'staff'])
+      .eq('note_type', 'note')
+      .order('created_at', { ascending: true })
+
+    // Fetch repair progress photos
+    const repairPhotos = (job.photos ?? []).filter((p: { photo_type: string }) => p.photo_type === 'repair')
+
+    return NextResponse.json({ job: { ...job, portal_notes: notes ?? [], repair_photos: repairPhotos } })
   }
 
   const { data: jobs } = await supabase
