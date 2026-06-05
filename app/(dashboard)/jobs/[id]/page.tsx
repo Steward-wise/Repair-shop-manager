@@ -7,6 +7,7 @@ import Image from 'next/image'
 import toast, { Toaster } from 'react-hot-toast'
 import JobStatusBadge from '@/components/job-status-badge'
 import SignaturePad from '@/components/signature-pad'
+import TimerCounter from '@/components/timer-counter'
 import { formatTicketNumber, formatDateTime, formatCurrency, generateCollectionLink } from '@/lib/utils'
 import {
   JOB_STATUS_LABELS, DEVICE_TYPE_LABELS,
@@ -41,7 +42,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const [totalMinutes, setTotalMinutes] = useState(0)
   const [activeLogId, setActiveLogId] = useState<string | null>(null)
   const [timerRunning, setTimerRunning] = useState(false)
-  const [elapsed, setElapsed] = useState(0) // seconds
+  const [timerStartedAt, setTimerStartedAt] = useState<number | null>(null) // epoch ms — passed to TimerCounter
   const [timerTechName, setTimerTechName] = useState('')
   const [sendingRating, setSendingRating] = useState(false)
   const [sendingApproval, setSendingApproval] = useState(false)
@@ -79,19 +80,16 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const [signingIntake, setSigningIntake] = useState(false)
 
   useEffect(() => {
-    loadJob()
+    // Load critical data first (job + timer), then secondary data
+    Promise.all([loadJob(), loadTimeLogs()]).then(() => {
+      // Load secondary data after main content is visible
+      loadCustodyEvents()
+      loadJobNotes()
+    })
+    // Inventory can load independently
     loadInventory()
-    loadTimeLogs()
-    loadCustodyEvents()
-    loadJobNotes()
   }, [id])
 
-  // Live timer tick
-  useEffect(() => {
-    if (!timerRunning) return
-    const interval = setInterval(() => setElapsed((e) => e + 1), 1000)
-    return () => clearInterval(interval)
-  }, [timerRunning])
 
   async function loadJob() {
     const res = await fetch(`/api/jobs/${id}`)
@@ -121,13 +119,16 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     const data = await res.json()
     setTimeLogs(data.logs ?? [])
     setTotalMinutes(data.total_minutes ?? 0)
-    // Check if there's an active (unended) log
+    // Restore active timer state — always reset to avoid stale state
     const active = (data.logs ?? []).find((l: JobTimeLog) => !l.ended_at)
     if (active) {
       setActiveLogId(active.id)
       setTimerRunning(true)
-      const startedSeconds = Math.floor((Date.now() - new Date(active.started_at).getTime()) / 1000)
-      setElapsed(startedSeconds)
+      setTimerStartedAt(new Date(active.started_at).getTime())
+    } else {
+      setActiveLogId(null)
+      setTimerRunning(false)
+      setTimerStartedAt(null)
     }
   }
 
@@ -216,32 +217,38 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   }
 
   async function startTimer() {
+    // Prevent duplicate active timers
+    if (timerRunning) return
+    const now = Date.now()
     const res = await fetch(`/api/jobs/${id}/time`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ technician: timerTechName || null }),
     })
     const data = await res.json()
-    if (!res.ok) { toast.error('Failed to start timer'); return }
+    if (!res.ok) { toast.error(data.error ?? 'Failed to start timer'); return }
     setActiveLogId(data.log.id)
     setTimerRunning(true)
-    setElapsed(0)
+    setTimerStartedAt(now)
     toast.success('Timer started')
   }
 
   async function stopTimer() {
-    if (!activeLogId) return
+    if (!activeLogId) { toast.error('No active timer to stop'); return }
     const res = await fetch(`/api/jobs/${id}/time`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ logId: activeLogId }),
     })
-    if (!res.ok) { toast.error('Failed to stop timer'); return }
+    const data = await res.json()
+    if (!res.ok) { toast.error(data.error ?? 'Failed to stop timer'); return }
     setTimerRunning(false)
     setActiveLogId(null)
-    setElapsed(0)
-    toast.success('Timer stopped')
+    setTimerStartedAt(null)
+    // Reload logs to get the completed entry with duration
     loadTimeLogs()
+    const mins = data.log?.duration_minutes
+    toast.success(mins != null ? `Timer stopped — ${mins < 60 ? `${mins}m` : `${Math.floor(mins/60)}h ${mins%60}m`} logged` : 'Timer stopped')
   }
 
   function formatDuration(minutes: number | null | undefined) {
@@ -251,13 +258,6 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     return h > 0 ? `${h}h ${m}m` : `${m}m`
   }
 
-  function formatElapsed(secs: number) {
-    const h = Math.floor(secs / 3600)
-    const m = Math.floor((secs % 3600) / 60)
-    const s = secs % 60
-    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  }
 
   async function updateStatus(newStatus: JobStatus) {
     setUpdatingStatus(true)
@@ -943,8 +943,8 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
                 </>
               ) : (
                 <>
-                  <div className="flex-1 font-mono text-xl font-bold text-primary tabular-nums">
-                    {formatElapsed(elapsed)}
+                  <div className="flex-1">
+                    {timerStartedAt && <TimerCounter startedAtMs={timerStartedAt} />}
                   </div>
                   <button onClick={stopTimer} className="btn-secondary text-sm px-3 flex items-center gap-1.5 text-red-400 border-red-800 hover:bg-red-900/30 whitespace-nowrap">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
