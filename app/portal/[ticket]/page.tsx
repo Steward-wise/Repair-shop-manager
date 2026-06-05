@@ -277,6 +277,11 @@ export default function PortalTicketPage() {
             Prefer to call? <a href={`tel:${shopPhone}`} className="text-primary">{shopPhone}</a>
           </p>
         )}
+
+        <p className="text-center text-xs text-muted pb-4">
+          <a href="/privacy" className="hover:text-fg underline">Privacy Notice</a>
+          {' · '}Your data is processed under UK GDPR.
+        </p>
       </div>
     </div>
   )

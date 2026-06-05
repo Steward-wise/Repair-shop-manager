@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { sendIntakeConfirmation } from '@/lib/resend'
 import { formatTicketNumber } from '@/lib/utils'
+import { logAudit } from '@/lib/audit'
+import { getApiUserRole } from '@/lib/auth'
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -126,6 +128,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
     }
 
+    // Audit log for significant changes
+    const { email: actorEmail } = await getApiUserRole()
+    if (allowedFields.status && data) {
+      logAudit({ action: 'job.status_changed', entity: 'job', entityId: id, userEmail: actorEmail, description: `Job #${data.ticket_number} status → ${allowedFields.status}`, newValue: { status: allowedFields.status } }).catch(() => null)
+    }
+    if (allowedFields.payment_status === 'paid' && data) {
+      logAudit({ action: 'job.payment_marked', entity: 'job', entityId: id, userEmail: actorEmail, description: `Job #${data.ticket_number} marked as paid — £${data.final_price ?? 0}`, newValue: { payment_status: 'paid', final_price: data.final_price } }).catch(() => null)
+    }
+    if (allowedFields.final_price != null && data) {
+      logAudit({ action: 'job.price_updated', entity: 'job', entityId: id, userEmail: actorEmail, description: `Job #${data.ticket_number} price set to £${allowedFields.final_price}`, newValue: { final_price: allowedFields.final_price } }).catch(() => null)
+    }
+
     // Auto-log status change to job_notes timeline
     if (allowedFields.status && data) {
       const { JOB_STATUS_LABELS } = await import('@/types')
@@ -181,8 +195,25 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = createAdminClient()
+  const { email: actorEmail, role } = await getApiUserRole()
+
+  // Only managers can delete jobs
+  if (role !== 'manager') return NextResponse.json({ error: 'Manager access required to delete jobs' }, { status: 403 })
+
+  // Capture job details before deletion for the audit log
+  const { data: job } = await supabase.from('jobs').select('ticket_number,device_make,device_model,status').eq('id', id).single()
 
   const { error } = await supabase.from('jobs').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  await logAudit({
+    action: 'job.deleted',
+    entity: 'job',
+    entityId: id,
+    userEmail: actorEmail,
+    description: `Job #${job?.ticket_number ?? id} deleted (${job?.device_make} ${job?.device_model}, was ${job?.status})`,
+    oldValue: job ?? undefined,
+  })
+
   return NextResponse.json({ deleted: true })
 }

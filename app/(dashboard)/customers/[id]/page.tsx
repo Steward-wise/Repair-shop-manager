@@ -101,7 +101,7 @@ export default async function CustomerDetailPage({ params }: PageProps) {
       </div>
 
       {/* GDPR */}
-      <GdprDeleteButton customerId={id} />
+      <GdprDeleteButton customerId={id} customerName={c.name} />
 
       {/* Job history */}
       <div className="card">

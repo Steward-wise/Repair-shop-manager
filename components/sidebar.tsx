@@ -113,6 +113,15 @@ const NAV_ITEMS = [
     ),
   },
   {
+    label: 'Audit Log',
+    href: '/audit',
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      </svg>
+    ),
+  },
+  {
     label: 'POS',
     href: '/pos',
     icon: (
@@ -164,9 +173,13 @@ const NAV_ITEMS = [
 
 interface SidebarProps {
   userEmail?: string
+  userRole?: 'manager' | 'technician'
 }
 
-export default function Sidebar({ userEmail }: SidebarProps) {
+// Nav items hidden from technicians (manager-only)
+const MANAGER_ONLY_HREFS = ['/reports', '/technicians', '/settings', '/audit', '/customers']
+
+export default function Sidebar({ userEmail, userRole = 'manager' }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -184,7 +197,7 @@ export default function Sidebar({ userEmail }: SidebarProps) {
 
   const NavLinks = () => (
     <nav className="flex-1 px-3 py-4 space-y-1">
-      {NAV_ITEMS.map((item) => {
+      {NAV_ITEMS.filter((item) => userRole === 'manager' || !MANAGER_ONLY_HREFS.includes(item.href)).map((item) => {
         const active = pathname === item.href || pathname.startsWith(item.href + '/')
         return (
           <Link
@@ -291,7 +304,12 @@ export default function Sidebar({ userEmail }: SidebarProps) {
             <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
               {userEmail?.[0]?.toUpperCase() ?? 'U'}
             </div>
-            <span className="text-xs text-muted truncate flex-1">{userEmail ?? 'Staff'}</span>
+            <div className="flex-1 min-w-0">
+              <span className="text-xs text-muted truncate block">{userEmail ?? 'Staff'}</span>
+              <span className={`text-xs font-medium ${userRole === 'manager' ? 'text-primary' : 'text-muted'}`}>
+                {userRole === 'manager' ? 'Manager' : 'Technician'}
+              </span>
+            </div>
             <button
               onClick={handleSignOut}
               disabled={signingOut}

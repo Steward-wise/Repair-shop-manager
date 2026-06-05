@@ -47,6 +47,11 @@ export default function SettingsPage() {
   const followup = useAction('/api/jobs/followup')
   const digest = useAction('/api/digest')
 
+  // Staff accounts
+  const [staffUsers, setStaffUsers] = useState<{ id: string; email: string; role: string; last_sign_in_at: string | null }[]>([])
+  const [loadingStaff, setLoadingStaff] = useState(false)
+  const [updatingRole, setUpdatingRole] = useState<string | null>(null)
+
   // App settings (ready reminder days)
   const [reminderDays, setReminderDays] = useState('3')
   const [savingReminder, setSavingReminder] = useState(false)
@@ -64,6 +69,13 @@ export default function SettingsPage() {
     fetch('/api/settings').then(r => r.json()).then(d => {
       if (d.settings?.ready_reminder_days) setReminderDays(d.settings.ready_reminder_days)
     })
+
+    // Load staff accounts
+    setLoadingStaff(true)
+    fetch('/api/staff').then(r => r.json()).then(d => {
+      setStaffUsers(d.users ?? [])
+      setLoadingStaff(false)
+    }).catch(() => setLoadingStaff(false))
 
     // Load technicians
     fetch('/api/technicians').then(r => r.json()).then(d => setTechnicians(d.technicians ?? []))
@@ -560,6 +572,103 @@ export default function SettingsPage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Staff Accounts & Roles */}
+        <div className="card space-y-4">
+          <div>
+            <h2 className="font-semibold text-fg">Staff Accounts &amp; Roles</h2>
+            <p className="text-xs text-muted mt-0.5">
+              Set each staff member&apos;s role. <strong>Managers</strong> have full access. <strong>Technicians</strong> can update job status and add notes but cannot delete records, access reports, or change settings.
+            </p>
+          </div>
+
+          {loadingStaff ? (
+            <div className="flex items-center gap-2 text-muted text-sm">
+              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              Loading staff accounts…
+            </div>
+          ) : staffUsers.length === 0 ? (
+            <p className="text-muted text-sm">No staff accounts found. Staff accounts are created in your Supabase Auth dashboard.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left text-muted font-medium py-2 pr-4">Email</th>
+                    <th className="text-left text-muted font-medium py-2 pr-4">Last sign in</th>
+                    <th className="text-left text-muted font-medium py-2">Role</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {staffUsers.map((u) => (
+                    <tr key={u.id}>
+                      <td className="py-2.5 pr-4 text-fg">{u.email}</td>
+                      <td className="py-2.5 pr-4 text-muted text-xs">
+                        {u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleDateString('en-GB') : 'Never'}
+                      </td>
+                      <td className="py-2.5">
+                        <select
+                          value={u.role}
+                          disabled={updatingRole === u.id}
+                          onChange={async (e) => {
+                            setUpdatingRole(u.id)
+                            const res = await fetch(`/api/staff/${u.id}`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ role: e.target.value }),
+                            })
+                            const data = await res.json()
+                            if (res.ok) {
+                              setStaffUsers(prev => prev.map(s => s.id === u.id ? { ...s, role: e.target.value } : s))
+                              toast.success(`Role updated to ${e.target.value}`)
+                            } else {
+                              toast.error(data.error ?? 'Failed to update role')
+                            }
+                            setUpdatingRole(null)
+                          }}
+                          className="input text-sm py-1 w-32"
+                        >
+                          <option value="manager">Manager</option>
+                          <option value="technician">Technician</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="text-xs text-muted border-t border-border pt-2">
+            Role changes take effect on the staff member&apos;s next page load. All role changes are recorded in the audit log.
+          </p>
+        </div>
+
+        {/* GDPR & Compliance */}
+        <div className="card space-y-3">
+          <h2 className="font-semibold text-fg">GDPR &amp; UK Compliance</h2>
+          <div className="space-y-2 text-sm text-muted">
+            <div className="flex items-center justify-between py-1.5 border-b border-border">
+              <span>Privacy notice (public)</span>
+              <a href="/privacy" target="_blank" className="text-primary hover:underline text-xs">View →</a>
+            </div>
+            <div className="flex items-center justify-between py-1.5 border-b border-border">
+              <span>Data retention</span>
+              <span className="text-fg text-xs">{7} years (configurable in app_settings)</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5 border-b border-border">
+              <span>Marketing consent</span>
+              <span className="text-fg text-xs">Recorded per customer at intake</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5 border-b border-border">
+              <span>Audit log</span>
+              <a href="/audit" className="text-primary hover:underline text-xs">View →</a>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+              <span>Data retention cron</span>
+              <span className="text-xs text-muted">POST /api/cron/retention (requires CRON_SECRET)</span>
+            </div>
           </div>
         </div>
 
