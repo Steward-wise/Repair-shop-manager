@@ -31,7 +31,7 @@ create policy "auth full access" on app_settings for all to authenticated using 
 insert into app_settings (key, value) values
   ('ready_reminder_days', '3'),
   ('data_retention_years', '7'),
-  ('shop_name', '404 Fixed'),
+  ('shop_name', ''),
   ('privacy_officer_email', '')
 on conflict (key) do nothing;
 
