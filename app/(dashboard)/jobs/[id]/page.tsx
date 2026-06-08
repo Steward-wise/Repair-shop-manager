@@ -25,6 +25,8 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [internalNote, setInternalNote] = useState('')
   const [savingNote, setSavingNote] = useState(false)
+  const [repairSummary, setRepairSummary] = useState('')
+  const [savingRepairSummary, setSavingRepairSummary] = useState(false)
   const [finalPrice, setFinalPrice] = useState('')
   const [savingPrice, setSavingPrice] = useState(false)
   const [technicianName, setTechnicianName] = useState('')
@@ -99,6 +101,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     setFinalPrice(data.job.final_price?.toString() ?? '')
     setTechnicianName(data.job.technician_name ?? '')
     setInternalNote(data.job.internal_notes ?? '')
+    setRepairSummary(data.job.repair_summary ?? '')
     setParts(data.job.parts ?? [])
     setDepositAmount(data.job.deposit_amount?.toString() ?? '')
     setDepositPaid(data.job.deposit_paid ?? false)
@@ -817,6 +820,41 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
               <button onClick={saveInternalNote} disabled={savingNote} className="btn-primary w-full text-sm">
                 {savingNote ? 'Saving…' : 'Save changes'}
               </button>
+
+              {/* Repair summary — what the technician actually did */}
+              <div className="pt-3 border-t border-zinc-800 space-y-2">
+                <div>
+                  <label className="label text-xs">Repair summary</label>
+                  <p className="text-xs text-muted mb-2">
+                    Describe what was done. This is sent to the customer as a repair report when the job is marked as <strong>Collected</strong>.
+                    {job.repair_report_sent_at && <span className="text-green-400 ml-1">✓ Report sent {new Date(job.repair_report_sent_at).toLocaleDateString('en-GB')}</span>}
+                  </p>
+                  <textarea
+                    className="input resize-none text-sm"
+                    rows={4}
+                    placeholder="e.g. Replaced cracked screen with OEM part. Tested touch, display and Face ID — all working. Battery health 87%."
+                    value={repairSummary}
+                    onChange={(e) => setRepairSummary(e.target.value)}
+                  />
+                </div>
+                <button
+                  onClick={async () => {
+                    setSavingRepairSummary(true)
+                    const res = await fetch(`/api/jobs/${id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ repair_summary: repairSummary.trim() || null }),
+                    })
+                    setSavingRepairSummary(false)
+                    if (res.ok) toast.success('Repair summary saved')
+                    else toast.error('Failed to save')
+                  }}
+                  disabled={savingRepairSummary}
+                  className="btn-secondary w-full text-sm"
+                >
+                  {savingRepairSummary ? 'Saving…' : 'Save Repair Summary'}
+                </button>
+              </div>
 
               {/* Quote approval — shown when diagnosed and price is set */}
               {job.status === 'diagnosed' && (

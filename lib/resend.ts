@@ -608,3 +608,56 @@ export async function sendCustomerMessageNotification({
     return true
   } catch { return false }
 }
+
+export async function sendRepairReport({
+  to, customerId, customerName, ticketNumber, deviceInfo,
+  reportedFault, repairSummary, finalPrice, warrantyDays, warrantyExpiresAt, technicianName,
+}: {
+  to: string
+  customerId: string
+  customerName: string
+  ticketNumber: string
+  deviceInfo: string
+  reportedFault: string
+  repairSummary: string
+  finalPrice: number | null
+  warrantyDays: number | null
+  warrantyExpiresAt: string | null
+  technicianName: string | null
+}): Promise<boolean> {
+  if (!process.env.RESEND_API_KEY) return false
+  const unsubUrl = unsubscribeUrl(customerId)
+
+  const warrantyHtml = warrantyDays && warrantyDays > 0
+    ? `<div style="background:#14532d;border-radius:8px;padding:16px;margin-bottom:20px;"><p style="margin:0 0 4px;color:#86efac;font-size:13px;font-weight:600;">✓ WARRANTY</p><p style="margin:0;color:#dcfce7;font-size:14px;">This repair carries a <strong>${warrantyDays}-day warranty</strong>${warrantyExpiresAt ? ` expiring <strong>${new Date(warrantyExpiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>` : ''}. Please retain this email as proof.</p></div>`
+    : ''
+
+  const body = `
+    <p style="margin:0 0 16px;font-size:16px;color:#a1a1aa;">Hi ${customerName},</p>
+    <p style="margin:0 0 24px;font-size:16px;color:#fafafa;line-height:1.6;">Your device is now repaired and ready to collect. Here is a summary of the work carried out.</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#27272a;border-radius:8px;padding:20px;margin-bottom:20px;">
+      <tr><td style="padding:8px 0;"><span style="color:#a1a1aa;font-size:14px;">Ticket</span><span style="float:right;color:#fafafa;font-family:monospace;font-weight:600;">${ticketNumber}</span></td></tr>
+      <tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Device</span><span style="float:right;color:#fafafa;">${deviceInfo}</span></td></tr>
+      <tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Reported fault</span><span style="float:right;color:#fafafa;">${reportedFault}</span></td></tr>
+      ${technicianName ? `<tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Technician</span><span style="float:right;color:#fafafa;">${technicianName}</span></td></tr>` : ''}
+      ${finalPrice != null ? `<tr><td style="padding:8px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:14px;">Amount charged</span><span style="float:right;color:#fafafa;font-weight:700;">£${finalPrice.toFixed(2)}</span></td></tr>` : ''}
+    </table>
+    <div style="background:#1a1a1a;border-left:3px solid #dc2626;border-radius:4px;padding:16px;margin-bottom:20px;">
+      <p style="margin:0 0 8px;color:#a1a1aa;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;">Work carried out</p>
+      <p style="margin:0;color:#fafafa;font-size:15px;line-height:1.7;white-space:pre-line;">${repairSummary}</p>
+    </div>
+    ${warrantyHtml}
+    <p style="margin:0 0 8px;color:#a1a1aa;font-size:14px;">Please bring this email and your ticket reference when collecting your device.</p>
+    ${SHOP_PHONE ? `<p style="margin:0;color:#a1a1aa;font-size:14px;">Questions? Call us on <a href="tel:${SHOP_PHONE}" style="color:#dc2626;">${SHOP_PHONE}</a></p>` : ''}`
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM, to,
+      subject: `Your repair is complete — ${ticketNumber} · ${SHOP_NAME}`,
+      html: emailShell('Repair Complete', body, unsubUrl),
+      headers: listUnsubscribeHeaders(customerId),
+    })
+    if (error) { console.error('Repair report email error:', error); return false }
+    return true
+  } catch { return false }
+}

@@ -78,7 +78,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const allowed = [
       'internal_notes', 'notes', 'final_price', 'technician_name', 'quoted_price',
       'backup_completed', 'payment_status', 'deposit_amount', 'deposit_paid', 'payment_method',
-      'checklist', 'warranty_days', 'warranty_expires_at', 'status', 'intake_signature_url',
+      'checklist', 'warranty_days', 'warranty_expires_at', 'status', 'intake_signature_url', 'repair_summary',
     ]
     for (const key of allowed) {
       if (key in jobFields) allowedFields[key] = jobFields[key]

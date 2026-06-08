@@ -71,6 +71,8 @@ export interface Job {
   intake_date: string | null
   alternate_contact: string | null
   intake_signature_url: string | null
+  repair_summary: string | null
+  repair_report_sent_at: string | null
   photos?: JobPhoto[]
   signature?: Signature | null
   parts?: JobPart[]
