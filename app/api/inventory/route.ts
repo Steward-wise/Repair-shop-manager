@@ -5,11 +5,14 @@ export async function GET() {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('inventory')
-    .select('*')
+    .select('id,part_name,sku,quantity,reorder_threshold,sell_price,cost_price,supplier,supplier_email,category,location')
     .order('part_name')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ items: data })
+  // Cache for 60s — inventory doesn't change on every request
+  return NextResponse.json({ items: data }, {
+    headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=30' },
+  })
 }
 
 export async function POST(request: NextRequest) {

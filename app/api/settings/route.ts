@@ -9,7 +9,9 @@ export async function GET() {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const settings: Record<string, string> = {}
   for (const row of data ?? []) settings[row.key] = row.value ?? ''
-  return NextResponse.json({ settings })
+  return NextResponse.json({ settings }, {
+    headers: { 'Cache-Control': 'private, max-age=300, stale-while-revalidate=60' },
+  })
 }
 
 export async function POST(request: NextRequest) {

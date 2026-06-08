@@ -7,6 +7,15 @@
   NODE_VERSION = "20"
   SECRETS_SCAN_OMIT_PATHS = ".env.example,netlify/functions/quote-request.js,netlify/quote-form-snippet.html"
 
+# Deploy serverless functions to London (closest to Supabase EU-West)
+# This eliminates cross-Atlantic latency on every Supabase API call (~100-200ms saved per request)
+[functions]
+  node_bundler = "esbuild"
+
+  [functions."*"]
+    # eu-west-2 = London — match this to your Supabase project region
+    preferred_region = "eu-west-2"
+
 # Next.js runtime is auto-applied by Netlify for Next.js projects
 # Environment variables (secrets) must be added via Netlify dashboard:
 #   NEXT_PUBLIC_SUPABASE_URL

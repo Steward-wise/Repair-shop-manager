@@ -82,20 +82,53 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const [signingIntake, setSigningIntake] = useState(false)
 
   useEffect(() => {
-    // Load critical data first (job + timer), then secondary data
-    Promise.all([loadJob(), loadTimeLogs()]).then(() => {
-      // Load secondary data after main content is visible
-      loadCustodyEvents()
-      loadJobNotes()
-    })
-    // Inventory can load independently
-    loadInventory()
+    // Single round-trip: fetch job + time logs + notes + custody events together
+    loadFull()
   }, [id])
 
+  async function loadFull() {
+    const res = await fetch(`/api/jobs/${id}/full`)
+    if (!res.ok) { router.push('/jobs'); return }
+    const data = await res.json()
 
+    // Job fields
+    setJob(data.job)
+    setFinalPrice(data.job.final_price?.toString() ?? '')
+    setTechnicianName(data.job.technician_name ?? '')
+    setInternalNote(data.job.internal_notes ?? '')
+    setRepairSummary(data.job.repair_summary ?? '')
+    setParts(data.job.parts ?? [])
+    setDepositAmount(data.job.deposit_amount?.toString() ?? '')
+    setDepositPaid(data.job.deposit_paid ?? false)
+    setPaymentMethod(data.job.payment_method ?? '')
+    setPaymentStatus(data.job.payment_status ?? 'unpaid')
+    setChecklist(data.job.checklist ?? [])
+
+    // Time logs
+    setTimeLogs(data.timeLogs ?? [])
+    setTotalMinutes(data.totalMinutes ?? 0)
+    const active = (data.timeLogs ?? []).find((l: JobTimeLog) => !l.ended_at)
+    if (active) {
+      setActiveLogId(active.id)
+      setTimerRunning(true)
+      setTimerStartedAt(new Date(active.started_at).getTime())
+    } else {
+      setActiveLogId(null)
+      setTimerRunning(false)
+      setTimerStartedAt(null)
+    }
+
+    // Notes + custody
+    setJobNotes(data.notes ?? [])
+    setCustodyEvents(data.custodyEvents ?? [])
+
+    setLoading(false)
+  }
+
+  // loadJob still used after mutations (status change, price save, etc.)
   async function loadJob() {
     const res = await fetch(`/api/jobs/${id}`)
-    if (!res.ok) { router.push('/jobs'); return }
+    if (!res.ok) return
     const data = await res.json()
     setJob(data.job)
     setFinalPrice(data.job.final_price?.toString() ?? '')
@@ -108,10 +141,11 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     setPaymentMethod(data.job.payment_method ?? '')
     setPaymentStatus(data.job.payment_status ?? 'unpaid')
     setChecklist(data.job.checklist ?? [])
-    setLoading(false)
   }
 
+  // Inventory is lazy-loaded only when the parts section is first opened
   async function loadInventory() {
+    if (inventory.length > 0) return // already loaded
     const res = await fetch('/api/inventory')
     const data = await res.json()
     setInventory(data.items ?? [])
@@ -122,7 +156,6 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     const data = await res.json()
     setTimeLogs(data.logs ?? [])
     setTotalMinutes(data.total_minutes ?? 0)
-    // Restore active timer state — always reset to avoid stale state
     const active = (data.logs ?? []).find((l: JobTimeLog) => !l.ended_at)
     if (active) {
       setActiveLogId(active.id)
@@ -916,7 +949,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
           </div>
 
           {/* Parts used */}
-          <div className="card space-y-3">
+          <div className="card space-y-3" onFocus={loadInventory} onMouseEnter={loadInventory}>
             <h2 className="font-semibold text-fg">Parts Used</h2>
             {parts.length === 0 ? (
               <p className="text-muted text-sm">No parts logged yet.</p>

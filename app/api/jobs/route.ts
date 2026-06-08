@@ -11,9 +11,11 @@ export async function GET(request: NextRequest) {
   const scan = searchParams.get('scan')
   const limit = parseInt(searchParams.get('limit') ?? '100', 10)
 
+  // Select only the fields needed for the jobs list — avoids fetching heavy
+  // jsonb columns (checklist, notes) for every row
   let query = supabase
     .from('jobs')
-    .select('*, customer:customers(id,name,phone,email)')
+    .select('id,ticket_number,status,device_type,device_make,device_model,reported_fault,imei,technician_name,quoted_price,final_price,payment_status,created_at,updated_at,customer:customers(id,name,phone,email)')
     .order('created_at', { ascending: false })
     .limit(limit)
 
