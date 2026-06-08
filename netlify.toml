@@ -13,8 +13,8 @@
   node_bundler = "esbuild"
 
   [functions."*"]
-    # eu-west-2 = London — match this to your Supabase project region
-    preferred_region = "eu-west-2"
+    # eu-central-1 = Frankfurt — matches Supabase project region
+    preferred_region = "eu-central-1"
 
 # Next.js runtime is auto-applied by Netlify for Next.js projects
 # Environment variables (secrets) must be added via Netlify dashboard:
