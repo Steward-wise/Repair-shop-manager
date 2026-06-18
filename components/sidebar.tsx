@@ -215,7 +215,7 @@ export default function Sidebar({ userEmail, userRole = 'manager' }: SidebarProp
   }
 
   const NavLinks = () => (
-    <nav className="flex-1 px-3 py-4 space-y-1">
+    <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
       {NAV_ITEMS.filter((item) => userRole === 'manager' || !MANAGER_ONLY_HREFS.includes(item.href)).map((item) => {
         const active = pathname === item.href || pathname.startsWith(item.href + '/')
         return (

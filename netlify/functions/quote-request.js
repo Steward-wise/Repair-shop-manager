@@ -81,10 +81,15 @@ exports.handler = async (event) => {
 
   // Send email notification to shop owner
   const resendKey = process.env.RESEND_API_KEY
-  const alertTo   = process.env.REORDER_ALERT_EMAIL || process.env.RESEND_FROM_EMAIL
+  // OWNER_EMAIL is the preferred var for the shop owner's notification address.
+  // Falls back to REORDER_ALERT_EMAIL then RESEND_FROM_EMAIL for legacy installs.
+  const alertTo   = process.env.OWNER_EMAIL || process.env.REORDER_ALERT_EMAIL || process.env.RESEND_FROM_EMAIL
   const fromEmail = process.env.RESEND_FROM_EMAIL || 'noreply@example.com'
   const fromName  = process.env.NEXT_PUBLIC_APP_NAME || 'Repair Shop'
   const appUrl    = process.env.NEXT_PUBLIC_APP_URL || 'https://app.404fixed.co.uk'
+
+  if (!resendKey) console.error('[quote-request] RESEND_API_KEY is not set — email skipped')
+  if (!alertTo)   console.error('[quote-request] No notification address set (OWNER_EMAIL / REORDER_ALERT_EMAIL / RESEND_FROM_EMAIL) — email skipped')
 
   if (resendKey && alertTo) {
     const name   = `${first_name} ${last_name}`
@@ -117,7 +122,7 @@ exports.handler = async (event) => {
 </table></body></html>`
 
     try {
-      await fetch('https://api.resend.com/emails', {
+      const resendRes = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -128,9 +133,15 @@ exports.handler = async (event) => {
           text: `New quote from ${name}\nEmail: ${email}${phone ? `\nPhone: ${phone}` : ''}\nDevice: ${device}\nProblem: ${problem_description}${suggested_price != null ? `\nAuto-quoted: £${suggested_price}` : ''}\n\nView in dashboard: ${quoteUrl}`,
         }),
       })
+      if (!resendRes.ok) {
+        const errBody = await resendRes.text()
+        console.error('[quote-request] Resend API error:', resendRes.status, errBody)
+      } else {
+        console.log('[quote-request] Notification email sent to', alertTo)
+      }
     } catch (emailErr) {
-      console.error('Email send error:', emailErr)
-      // Don't fail the request if email errors
+      console.error('[quote-request] Email send exception:', emailErr)
+      // Never fail the customer-facing response due to an email error
     }
   }
 
