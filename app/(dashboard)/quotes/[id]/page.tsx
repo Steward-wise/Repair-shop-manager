@@ -58,6 +58,13 @@ export default function QuoteDetailPage() {
     setQuote(prev => prev ? { ...prev, status: 'sent' } : prev)
   }
 
+  async function deleteQuote() {
+    if (!confirm('Permanently delete this quote? This cannot be undone.')) return
+    const res = await fetch(`/api/quotes/${id}`, { method: 'DELETE' })
+    if (res.ok) { toast.success('Quote deleted'); router.push('/quotes') }
+    else toast.error('Failed to delete quote')
+  }
+
   async function updateStatus(status: QuoteStatus) {
     const res = await fetch(`/api/quotes/${id}`, {
       method: 'PATCH',
@@ -87,6 +94,16 @@ export default function QuoteDetailPage() {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
           </button>
           <h1 className="text-2xl font-bold text-fg">{quote.first_name} {quote.last_name}</h1>
+          <button
+            onClick={deleteQuote}
+            title="Delete quote"
+            className="ml-auto flex items-center gap-1.5 text-sm text-red-400 hover:text-red-300 border border-red-800 hover:bg-red-950 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+            </svg>
+            Delete Quote
+          </button>
           <span className={`text-xs px-2.5 py-1 rounded-full border font-medium ${QUOTE_STATUS_COLORS[status]}`}>
             {QUOTE_STATUS_LABELS[status]}
           </span>

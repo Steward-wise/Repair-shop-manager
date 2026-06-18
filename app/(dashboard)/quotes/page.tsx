@@ -45,8 +45,9 @@ export default function QuotesPage() {
     setSelected(prev => prev.size === quotes.length ? new Set() : new Set(quotes.map(q => q.id)))
   }
 
-  async function bulkAction(action: 'send' | 'decline' | 'close') {
+  async function bulkAction(action: 'send' | 'decline' | 'close' | 'delete') {
     if (!selected.size) return
+    if (action === 'delete' && !confirm(`Permanently delete ${selected.size} quote${selected.size !== 1 ? 's' : ''}? This cannot be undone.`)) return
     setBulkLoading(true)
     const res = await fetch('/api/quotes/bulk', {
       method: 'POST',
@@ -57,8 +58,17 @@ export default function QuotesPage() {
     setBulkLoading(false)
     if (!res.ok) { toast.error(data.error ?? 'Failed'); return }
     if (action === 'send') toast.success(`Sent ${data.sent} quote${data.sent !== 1 ? 's' : ''}`)
+    else if (action === 'delete') toast.success(`Deleted ${data.deleted} quote${data.deleted !== 1 ? 's' : ''}`)
     else toast.success(`Updated ${data.updated} quote${data.updated !== 1 ? 's' : ''}`)
     load()
+  }
+
+  async function deleteQuote(id: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!confirm('Permanently delete this quote? This cannot be undone.')) return
+    const res = await fetch(`/api/quotes/${id}`, { method: 'DELETE' })
+    if (res.ok) { toast.success('Quote deleted'); load() }
+    else toast.error('Failed to delete quote')
   }
 
   const pendingCount = quotes.filter(q => q.status === 'pending').length
@@ -102,6 +112,9 @@ export default function QuotesPage() {
               <button onClick={() => bulkAction('close')} disabled={bulkLoading} className="btn-secondary text-sm py-1.5 px-3">
                 Close
               </button>
+              <button onClick={() => bulkAction('delete')} disabled={bulkLoading} className="btn-secondary text-sm py-1.5 px-3 text-red-400 border-red-800 hover:bg-red-950">
+                Delete
+              </button>
             </div>
           </div>
         )}
@@ -129,11 +142,12 @@ export default function QuotesPage() {
                   <th className="text-left p-3 text-muted font-medium">Price</th>
                   <th className="text-left p-3 text-muted font-medium">Status</th>
                   <th className="text-left p-3 text-muted font-medium hidden lg:table-cell">Date</th>
+                  <th className="w-10 p-3" />
                 </tr>
               </thead>
               <tbody>
                 {quotes.map(q => (
-                  <tr key={q.id} className="border-b border-border last:border-0 hover:bg-surface-2 cursor-pointer"
+                  <tr key={q.id} className="group border-b border-border last:border-0 hover:bg-surface-2 cursor-pointer"
                     onClick={(e) => { if ((e.target as HTMLElement).tagName !== 'INPUT') router.push(`/quotes/${q.id}`) }}>
                     <td className="p-3" onClick={e => e.stopPropagation()}>
                       <input type="checkbox" checked={selected.has(q.id)} onChange={() => toggleSelect(q.id)}
@@ -159,6 +173,17 @@ export default function QuotesPage() {
                     </td>
                     <td className="p-3 text-muted text-xs hidden lg:table-cell whitespace-nowrap">
                       {new Date(q.created_at).toLocaleDateString('en-GB')}
+                    </td>
+                    <td className="p-3" onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={e => deleteQuote(q.id, e)}
+                        title="Delete quote"
+                        className="text-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                        </svg>
+                      </button>
                     </td>
                   </tr>
                 ))}
