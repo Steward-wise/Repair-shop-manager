@@ -67,8 +67,13 @@ export default function QuotesPage() {
     e.stopPropagation()
     if (!confirm('Permanently delete this quote? This cannot be undone.')) return
     const res = await fetch(`/api/quotes/${id}`, { method: 'DELETE' })
-    if (res.ok) { toast.success('Quote deleted'); load() }
-    else toast.error('Failed to delete quote')
+    if (res.ok) {
+      toast.success('Quote deleted')
+      setQuotes(prev => prev.filter(q => q.id !== id))
+    } else {
+      const data = await res.json().catch(() => ({}))
+      toast.error(data.error ?? `Delete failed (HTTP ${res.status})`)
+    }
   }
 
   const pendingCount = quotes.filter(q => q.status === 'pending').length
