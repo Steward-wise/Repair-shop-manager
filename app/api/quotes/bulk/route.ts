@@ -9,7 +9,8 @@ export async function POST(request: NextRequest) {
     if (!ids?.length || !action) return NextResponse.json({ error: 'ids and action required' }, { status: 400 })
 
     if (action === 'delete') {
-      await supabase.from('quotes').delete().in('id', ids)
+      const { error } = await supabase.from('quotes').delete().in('id', ids)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
       return NextResponse.json({ deleted: ids.length })
     }
 

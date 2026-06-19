@@ -30,7 +30,11 @@ export async function POST(request: NextRequest) {
     let quote_id: string | null = null
     let deviceInfo = body.device_info || ''
     if (quote_token) {
-      const { data: quote } = await supabase.from('quotes').select('id, device_type, device_make_model').eq('quote_token', quote_token).single()
+      const { data: quote } = await supabase
+        .from('quotes')
+        .select('id, device_type, device_make_model, suggested_price, matched_rule_id')
+        .eq('quote_token', quote_token)
+        .single()
       if (quote) {
         // Check for existing booking for this quote
         const { data: existing } = await supabase.from('appointments').select('id').eq('quote_id', quote.id).neq('status', 'cancelled').maybeSingle()
@@ -39,7 +43,9 @@ export async function POST(request: NextRequest) {
         }
         quote_id = quote.id
         deviceInfo = [quote.device_type, quote.device_make_model].filter(Boolean).join(' — ') || deviceInfo
-        await supabase.from('quotes').update({ status: 'booked', responded_at: new Date().toISOString() }).eq('id', quote.id)
+        // Instant-price quotes (matched via auto-rules) are auto-accepted on booking
+        const newStatus = quote.suggested_price != null && quote.matched_rule_id != null ? 'accepted' : 'booked'
+        await supabase.from('quotes').update({ status: newStatus, responded_at: new Date().toISOString() }).eq('id', quote.id)
       }
     }
 

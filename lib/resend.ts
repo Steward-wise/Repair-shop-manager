@@ -2,7 +2,7 @@ import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-const FROM = `${process.env.RESEND_FROM_NAME ?? 'Repair Shop'} <${process.env.RESEND_FROM_EMAIL ?? 'noreply@example.com'}>`
+const FROM = `${process.env.RESEND_FROM_NAME ?? '404 Fixed'} <${process.env.RESEND_FROM_EMAIL ?? 'repairs@404fixed.co.uk'}>`
 const SHOP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? 'Repair Shop'
 const SHOP_PHONE = process.env.NEXT_PUBLIC_SHOP_PHONE ?? ''
 

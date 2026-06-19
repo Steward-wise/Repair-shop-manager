@@ -79,17 +79,14 @@ exports.handler = async (event) => {
     return { statusCode: 500, headers: HEADERS, body: JSON.stringify({ error: 'Failed to save quote request' }) }
   }
 
-  // Send email notification to shop owner
+  // Email config — fallbacks hardcoded so missing env vars never silently break delivery
   const resendKey = process.env.RESEND_API_KEY
-  // OWNER_EMAIL is the preferred var for the shop owner's notification address.
-  // Falls back to REORDER_ALERT_EMAIL then RESEND_FROM_EMAIL for legacy installs.
-  const alertTo   = process.env.OWNER_EMAIL || process.env.REORDER_ALERT_EMAIL || process.env.RESEND_FROM_EMAIL
-  const fromEmail = process.env.RESEND_FROM_EMAIL || 'noreply@example.com'
-  const fromName  = process.env.NEXT_PUBLIC_APP_NAME || 'Repair Shop'
+  const alertTo   = process.env.OWNER_EMAIL || 'repairs@404fixed.co.uk'
+  const fromEmail = process.env.RESEND_FROM_EMAIL || 'repairs@404fixed.co.uk'
+  const fromName  = process.env.NEXT_PUBLIC_APP_NAME || '404 Fixed'
   const appUrl    = process.env.NEXT_PUBLIC_APP_URL || 'https://app.404fixed.co.uk'
 
-  if (!resendKey) console.error('[quote-request] RESEND_API_KEY is not set — email skipped')
-  if (!alertTo)   console.error('[quote-request] No notification address set (OWNER_EMAIL / REORDER_ALERT_EMAIL / RESEND_FROM_EMAIL) — email skipped')
+  if (!resendKey) console.error('[quote-request] RESEND_API_KEY is not set — emails skipped')
 
   if (resendKey && alertTo) {
     const name   = `${first_name} ${last_name}`
@@ -145,5 +142,60 @@ exports.handler = async (event) => {
     }
   }
 
-  return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ ok: true, id: quote.id }) }
+  // Auto-send quote to customer when instant price was matched
+  if (resendKey && suggested_price != null && quote.quote_token) {
+    const bookUrl    = `${appUrl}/book/${quote.quote_token}`
+    const declineUrl = `${appUrl}/api/quotes/decline?token=${quote.quote_token}`
+    const name       = `${first_name} ${last_name}`
+    const device     = [device_make_model, device_type].filter(Boolean).join(' — ') || 'Your device'
+
+    const customerHtml = `<!DOCTYPE html><html><body style="margin:0;padding:40px 20px;background:#09090b;font-family:system-ui,sans-serif;color:#fafafa;">
+<table width="600" style="max-width:600px;margin:0 auto;background:#18181b;border-radius:12px;overflow:hidden;">
+  <tr><td style="padding:28px 32px;border-bottom:2px solid #dc2626;">
+    <h1 style="margin:0;font-size:20px;font-weight:700;color:#fafafa;"><span style="color:#dc2626;">●</span> ${fromName}</h1>
+    <p style="margin:6px 0 0;color:#a1a1aa;font-size:13px;">Your instant quote is ready</p>
+  </td></tr>
+  <tr><td style="padding:28px 32px;">
+    <p style="color:#fafafa;font-size:15px;margin:0 0 20px;">Hi ${first_name},</p>
+    <p style="color:#a1a1aa;font-size:14px;margin:0 0 20px;">Great news — we can give you an instant price for your repair:</p>
+    <table width="100%" style="background:#27272a;border-radius:8px;padding:16px;margin-bottom:20px;">
+      <tr><td style="padding:7px 0;"><span style="color:#a1a1aa;font-size:13px;">Device</span><span style="float:right;color:#fafafa;">${device}</span></td></tr>
+      <tr><td style="padding:7px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:13px;">Repair</span><span style="float:right;color:#fafafa;">${problem_description}</span></td></tr>
+      <tr><td style="padding:7px 0;border-top:1px solid #3f3f46;"><span style="color:#a1a1aa;font-size:13px;">Price</span><span style="float:right;color:#22c55e;font-weight:700;font-size:18px;">£${suggested_price}</span></td></tr>
+    </table>
+    <p style="color:#a1a1aa;font-size:13px;margin:0 0 24px;">To get booked in, simply choose a date and time that works for you:</p>
+    <a href="${bookUrl}" style="display:inline-block;background:#dc2626;color:white;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;margin-bottom:16px;">Book My Appointment →</a>
+    <p style="margin:20px 0 0;font-size:12px;color:#52525b;">Not interested? <a href="${declineUrl}" style="color:#71717a;">Decline this quote</a></p>
+  </td></tr>
+  <tr><td style="padding:16px 32px;background:#27272a;text-align:center;">
+    <p style="margin:0;color:#71717a;font-size:12px;">© ${new Date().getFullYear()} ${fromName}</p>
+  </td></tr>
+</table></body></html>`
+
+    try {
+      const customerRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: `${fromName} <${fromEmail}>`,
+          to: email,
+          subject: `Your instant repair quote — £${suggested_price}`,
+          html: customerHtml,
+          text: `Hi ${first_name},\n\nYour instant repair quote:\n${device}\n${problem_description}\nPrice: £${suggested_price}\n\nBook your appointment: ${bookUrl}\n\nNot interested? ${declineUrl}`,
+        }),
+      })
+      if (!customerRes.ok) {
+        const errBody = await customerRes.text()
+        console.error('[quote-request] Customer quote email error:', customerRes.status, errBody)
+      } else {
+        console.log('[quote-request] Instant quote email sent to customer:', email)
+        // Mark quote as sent so the dashboard reflects it
+        await supabase.from('quotes').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', quote.id)
+      }
+    } catch (e) {
+      console.error('[quote-request] Customer quote email exception:', e)
+    }
+  }
+
+  return { statusCode: 200, headers: HEADERS, body: JSON.stringify({ ok: true, id: quote.id, instant: suggested_price != null }) }
 }
