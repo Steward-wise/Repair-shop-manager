@@ -50,8 +50,34 @@ function getHeader(headers: unknown, name: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  // Verify Resend webhook signature when configured
+  const webhookSecret = process.env.RESEND_WEBHOOK_SECRET
+  const rawBody = await request.text()
+  let raw: unknown
+
+  if (webhookSecret) {
+    const svixId = request.headers.get('svix-id')
+    const svixTimestamp = request.headers.get('svix-timestamp')
+    const svixSignature = request.headers.get('svix-signature')
+    if (!svixId || !svixTimestamp || !svixSignature) {
+      return NextResponse.json({ error: 'Missing webhook signature' }, { status: 401 })
+    }
+    try {
+      // Svix signature verification: HMAC-SHA256 over "<id>.<timestamp>.<body>"
+      const signingPayload = `${svixId}.${svixTimestamp}.${rawBody}`
+      const secretBytes = Buffer.from(webhookSecret.replace(/^whsec_/, ''), 'base64')
+      const key = await crypto.subtle.importKey('raw', secretBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['verify'])
+      const expectedSig = Buffer.from(await crypto.subtle.sign('HMAC', key, Buffer.from(signingPayload))).toString('base64')
+      const signatures = svixSignature.split(' ')
+      const valid = signatures.some(s => s.replace(/^v1,/, '') === expectedSig)
+      if (!valid) return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 401 })
+    } catch {
+      return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 401 })
+    }
+  }
+
   try {
-    const raw = await request.json()
+    raw = JSON.parse(rawBody)
 
     // Resend wraps inbound in { type: 'email.received', data: { ... } }
     // Fall back to raw body if it's a direct post (for testing)

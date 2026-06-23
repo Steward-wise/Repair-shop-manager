@@ -1,12 +1,16 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const email = searchParams.get('email')
-  const ticket = searchParams.get('ticket')
+  // Resolve the caller's identity from their session — never trust the query param
+  const supabaseAuth = await createClient()
+  const { data: { user } } = await supabaseAuth.auth.getUser()
+  if (!user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  if (!email) return NextResponse.json({ error: 'email required' }, { status: 400 })
+  const email = user.email
+  const { searchParams } = new URL(request.url)
+  const ticket = searchParams.get('ticket')
 
   const supabase = createAdminClient()
 
