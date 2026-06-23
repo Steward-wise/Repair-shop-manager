@@ -1,7 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { getApiUserRole } from '@/lib/auth'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { role } = await getApiUserRole()
+  if (!role) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('app_settings')
@@ -15,6 +19,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const { role } = await getApiUserRole()
+  if (role !== 'manager') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const supabase = createAdminClient()
   try {
     const body = await request.json()

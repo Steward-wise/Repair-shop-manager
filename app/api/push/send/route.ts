@@ -1,7 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { getApiUserRole } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
+  const { role } = await getApiUserRole()
+  if (!role) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   // Skip silently if VAPID keys aren't configured
   if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
     return NextResponse.json({ sent: 0, reason: 'VAPID not configured' })

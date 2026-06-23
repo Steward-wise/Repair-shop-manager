@@ -1,7 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
+import { getApiUserRole } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
+  const { role } = await getApiUserRole()
+  if (!role) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
   const { searchParams } = new URL(request.url)
   const q = searchParams.get('q')?.trim() ?? ''
 
