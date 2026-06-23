@@ -79,12 +79,11 @@ exports.handler = async (event) => {
     return { statusCode: 500, headers: HEADERS, body: JSON.stringify({ error: 'Failed to save quote request' }) }
   }
 
-  // Email config — fallbacks hardcoded so missing env vars never silently break delivery
   const resendKey = process.env.RESEND_API_KEY
-  const alertTo   = process.env.OWNER_EMAIL || 'repairs@404fixed.co.uk'
-  const fromEmail = process.env.RESEND_FROM_EMAIL || 'repairs@404fixed.co.uk'
-  const fromName  = process.env.NEXT_PUBLIC_APP_NAME || '404 Fixed'
-  const appUrl    = process.env.NEXT_PUBLIC_APP_URL || 'https://app.404fixed.co.uk'
+  const alertTo   = process.env.OWNER_EMAIL
+  const fromEmail = process.env.RESEND_FROM_EMAIL
+  const fromName  = process.env.NEXT_PUBLIC_APP_NAME || 'Repair Shop'
+  const appUrl    = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
   if (!resendKey) console.error('[quote-request] RESEND_API_KEY is not set — emails skipped')
 

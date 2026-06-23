@@ -97,9 +97,7 @@ Open your **Supabase dashboard → SQL Editor** and run each file from the `supa
 
 ### 6. Run the setup wizard
 
-Visit `https://yoursite.netlify.app/setup` and follow the guided wizard. You'll need your license key.
-
-> **Don't have a license key?** Purchase one at [404fixed.co.uk/repair-shop](https://404fixed.co.uk/repair-shop)
+Visit `https://yoursite.netlify.app/setup` and follow the guided wizard — it will walk you through env vars, SQL migrations, and a live health check.
 
 ### 7. Sign in
 
@@ -162,11 +160,10 @@ Technicians see jobs, inventory, support, and their own workload. Managers see e
 ## Support
 
 - Setup wizard: `/setup` on your deployment
-- Documentation: [404fixed.co.uk/repair-shop](https://404fixed.co.uk/repair-shop)
-- Issues: Open a GitHub issue on this repository
+- Issues & feature requests: [GitHub Issues](https://github.com/oddlywiredwebdesign/404fixed/issues)
 
 ---
 
 ## License
 
-This software is licensed. Each deployment requires a valid license key obtained from [404fixed.co.uk/repair-shop](https://404fixed.co.uk/repair-shop). You may not redistribute or resell this software.
+MIT — free to use, modify, and deploy. See [LICENSE](LICENSE).
